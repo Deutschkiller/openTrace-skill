@@ -229,3 +229,135 @@ class TraceAPI:
         """
         self._init_db()
         return self._module_trace.search_module(pattern)
+
+    def load_vcd(self, vcd_path):
+        """
+        加载 VCD 文件
+
+        Args:
+            vcd_path: VCD 文件路径
+
+        Returns:
+            VCDAnalyzer 实例
+
+        Raises:
+            ImportError: vcdvcd 未安装
+            FileNotFoundError: VCD 文件不存在
+        """
+        self._init_db()
+        from .VCDAnalyzer import VCDAnalyzer
+
+        analyzer = VCDAnalyzer(vcd_path, self._G)
+        analyzer.parse()
+        return analyzer
+
+    def analyze_signal_waveform(
+        self, vcd_path, signal_name, file_path=None, line_num=None, column_num=0
+    ):
+        """
+        分析信号波形
+
+        结合 Verilog 代码位置确定实例路径，查询 VCD 中的信号时序
+
+        Args:
+            vcd_path: VCD 文件路径
+            signal_name: 信号名
+            file_path: Verilog 文件路径 (可选，用于确定实例上下文)
+            line_num: 行号 (可选)
+            column_num: 列号 (可选)
+
+        Returns:
+            dict: 分析结果
+                - signal_name: 信号名
+                - vcd_path: VCD 中的完整路径
+                - width: 位宽
+                - timeline: [(time, value), ...]
+                - summary: 信号摘要
+                - anomalies: 异常检测
+                - matched_signals: 匹配的信号列表
+        """
+        self._init_db()
+        from .VCDAnalyzer import VCDAnalyzer
+
+        analyzer = VCDAnalyzer(vcd_path, self._G)
+        analyzer.parse()
+
+        instance_path = ""
+        if file_path and line_num is not None:
+            instance_path = self._get_instance_path(file_path, line_num, column_num)
+
+        matched_signals = analyzer.find_signal(signal_name, instance_path=instance_path)
+
+        result = {
+            "signal_name": signal_name,
+            "instance_path": instance_path,
+            "matched_signals": matched_signals,
+            "vcd_path": None,
+            "width": None,
+            "timeline": [],
+            "summary": None,
+            "anomalies": None,
+        }
+
+        if matched_signals:
+            best_match = matched_signals[0]["vcd_path"]
+            result["vcd_path"] = best_match
+            result["width"] = analyzer.get_signal_width(best_match)
+            result["timeline"] = analyzer.get_signal_timeline(best_match)
+            result["summary"] = analyzer.get_signal_summary(best_match)
+            result["anomalies"] = analyzer.detect_anomalies(best_match)
+
+        return result
+
+    def _get_instance_path(self, file_path, line_num, column_num=0):
+        """
+        根据文件位置获取实例路径
+
+        Args:
+            file_path: 文件路径
+            line_num: 行号
+            column_num: 列号
+
+        Returns:
+            str: 实例路径 (如 "top.inst1.inst2")
+        """
+        import Lib.FileInfLib as FileInfLib
+
+        file_path = os.path.realpath(file_path)
+
+        module_io_inf = FileInfLib.get_module_io_inf_from_pos(
+            file_path, (line_num, column_num)
+        )
+        module_inf = module_io_inf.get("module_inf")
+
+        if not module_inf:
+            return ""
+
+        module_name = module_inf["module_name_sr"]["str"]
+
+        traces = self.get_module_trace(module_name)
+        if traces:
+            trace = traces[0]
+            if trace.get("instances"):
+                return ".".join(trace["instances"])
+
+        return module_name
+
+    def list_vcd_signals(self, vcd_path, pattern=None):
+        """
+        列出 VCD 文件中的信号
+
+        Args:
+            vcd_path: VCD 文件路径
+            pattern: 通配符模式 (可选)
+
+        Returns:
+            list: 信号名列表
+        """
+        self._init_db()
+        from .VCDAnalyzer import VCDAnalyzer
+
+        analyzer = VCDAnalyzer(vcd_path, self._G)
+        analyzer.parse()
+
+        return analyzer.list_signals(pattern)

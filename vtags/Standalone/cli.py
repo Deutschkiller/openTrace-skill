@@ -17,6 +17,9 @@ vtags 命令行工具
     strace <signal> <file> <line> [column]   追踪信号源
     dtrace <signal> <file> <line> [column]   追踪信号目的地
 
+    vcd <vcd_file> [--list] [--signal NAME] [--file PATH --line NUM]
+                                VCD 波形分析
+
 选项:
     -db PATH      指定 vtags.db 路径
     -j, --json    JSON 格式输出
@@ -125,6 +128,83 @@ def print_signal_trace(result, use_json=False):
         print(f"\nNo {trace_type} found.")
 
 
+def print_vcd_list(signals, use_json=False):
+    """打印 VCD 信号列表"""
+    if use_json:
+        print(json.dumps(signals, indent=2))
+        return
+
+    if not signals:
+        print("No signals found.")
+        return
+
+    print(f"\nVCD Signals ({len(signals)}):")
+    for i, sig in enumerate(signals):
+        print(f"  {i}: {sig}")
+
+
+def print_vcd_analysis(result, use_json=False, max_timeline=20):
+    """打印 VCD 分析结果"""
+    if use_json:
+        print(json.dumps(result, indent=2))
+        return
+
+    signal_name = result.get("signal_name", "")
+    vcd_path = result.get("vcd_path")
+    instance_path = result.get("instance_path", "")
+
+    print(f"\n{'=' * 60}")
+    print(f"Signal: {signal_name}")
+    if instance_path:
+        print(f"Instance Path: {instance_path}")
+    print(f"{'=' * 60}")
+
+    if not vcd_path:
+        matched = result.get("matched_signals", [])
+        if matched:
+            print("\nSignal not found. Similar signals:")
+            for m in matched[:10]:
+                print(f"  {m['vcd_path']} (score: {m['score']})")
+        else:
+            print("\nSignal not found in VCD file.")
+        return
+
+    print(f"\nVCD Path: {vcd_path}")
+    print(f"Width: {result.get('width', '?')} bit(s)")
+
+    timeline = result.get("timeline", [])
+    if timeline:
+        print(f"\nTimeline ({len(timeline)} transitions):")
+        display_count = min(len(timeline), max_timeline)
+        for time, value in timeline[:display_count]:
+            print(f"  #{time}: {value}")
+        if len(timeline) > max_timeline:
+            print(f"  ... ({len(timeline) - max_timeline} more)")
+    else:
+        print("\nNo transitions recorded.")
+
+    anomalies = result.get("anomalies", {})
+    if anomalies:
+        warnings = []
+        if anomalies.get("stuck_at_0"):
+            warnings.append("Signal stuck at 0")
+        if anomalies.get("stuck_at_1"):
+            warnings.append("Signal stuck at 1")
+        if anomalies.get("stuck_at_x"):
+            warnings.append("Signal stuck at X (unknown)")
+        if anomalies.get("stuck_at_z"):
+            warnings.append("Signal stuck at Z (high-impedance)")
+
+        if warnings:
+            print(f"\nWarnings:")
+            for w in warnings:
+                print(f"  [!] {w} - check driver logic")
+        else:
+            print(f"\nTransitions: {anomalies.get('transitions', 0)}")
+            print(f"Initial value: {anomalies.get('initial_value', '?')}")
+            print(f"Final value: {anomalies.get('final_value', '?')}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="vtags standalone command line tool",
@@ -186,6 +266,21 @@ Examples:
     parser_dtrace.add_argument("line", type=int, help="Line number (1-indexed)")
     parser_dtrace.add_argument(
         "column", nargs="?", type=int, default=0, help="Column number (0-indexed)"
+    )
+
+    parser_vcd = subparsers.add_parser("vcd", help="Analyze VCD waveform file")
+    parser_vcd.add_argument("vcd_file", help="VCD file path")
+    parser_vcd.add_argument(
+        "--list", action="store_true", help="List all signals in VCD"
+    )
+    parser_vcd.add_argument(
+        "--pattern", help="Filter signals by pattern (use with --list)"
+    )
+    parser_vcd.add_argument("--signal", help="Signal name to analyze")
+    parser_vcd.add_argument("--file", help="Verilog file path (for instance context)")
+    parser_vcd.add_argument("--line", type=int, help="Line number in Verilog file")
+    parser_vcd.add_argument(
+        "--max-timeline", type=int, default=20, help="Max timeline entries to display"
     )
 
     args = parser.parse_args()
@@ -279,6 +374,25 @@ Examples:
                 args.signal, args.file, args.line - 1, args.column
             )
             print_signal_trace(result, args.json)
+
+        elif args.command == "vcd":
+            if not os.path.isfile(args.vcd_file):
+                print(f"Error: VCD file not found: {args.vcd_file}", file=sys.stderr)
+                return 1
+
+            if args.list:
+                result = api.list_vcd_signals(args.vcd_file, args.pattern)
+                print_vcd_list(result, args.json)
+            elif args.signal:
+                file_path = args.file
+                line_num = args.line - 1 if args.line else None
+                result = api.analyze_signal_waveform(
+                    args.vcd_file, args.signal, file_path, line_num
+                )
+                print_vcd_analysis(result, args.json, args.max_timeline)
+            else:
+                result = api.list_vcd_signals(args.vcd_file, args.pattern)
+                print_vcd_list(result, args.json)
 
         else:
             parser.print_help()

@@ -157,6 +157,51 @@ python3 {{VTAGS_PATH}}/Standalone/cli.py -db ./vtags.db -j info switch_core_top
 }
 ```
 
+### vcd - VCD 波形分析
+
+分析 VCD 波形文件，结合信号追踪定位问题。需要先安装依赖：
+
+```bash
+pip install vcdvcd
+```
+
+#### 列出 VCD 中的信号
+```bash
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> vcd <vcd_file> --list
+```
+
+#### 按模式过滤信号
+```bash
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> vcd <vcd_file> --list --pattern "*clk*"
+```
+
+#### 分析指定信号
+```bash
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> vcd <vcd_file> --signal <signal_name>
+```
+
+输出示例：
+```
+Signal: w_tx1_req
+VCD Path: switch_core_top.rx_mac_mng_inst.w_tx1_req
+Width: 1 bit(s)
+
+Timeline (3 transitions):
+  #0: 0
+  #1206000: 0
+  #2400000: 0
+
+Warnings:
+  [!] Signal stuck at 0 - check driver logic
+```
+
+#### 结合代码位置分析
+```bash
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> vcd <vcd_file> --signal <signal> --file <verilog_file> --line <line_num>
+```
+
+会自动根据文件位置确定实例路径，精确匹配 VCD 中的信号。
+
 ## Python API
 
 ```python

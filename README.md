@@ -1,6 +1,6 @@
 # vtags-standalone
 
-Verilog HDL 代码导航工具，独立于 Vim。支持模块拓扑、信号追踪、模块搜索等功能。
+Verilog HDL 代码导航工具，独立于 Vim。支持模块拓扑、模块追踪、信号追踪、模块搜索、VCD 波形分析等功能。
 
 ## 快速安装
 
@@ -37,23 +37,51 @@ OpenCode 会自动加载 vtags-standalone skill 并执行相应命令。
 ## 命令行使用
 
 ```bash
+# CLI 工具会自动向上搜索 vtags.db，也可用 -db 显式指定
+# python3 <vtags_path>/Standalone/cli.py -db ./vtags.db <command>
+
 # 列出顶层模块
-python3 <vtags_path>/Standalone/cli.py -db ./vtags.db tops
+python3 <vtags_path>/Standalone/cli.py tops
 
-# 查看模块拓扑
-python3 <vtags_path>/Standalone/cli.py -db ./vtags.db topo <module> [depth]
+# 查看模块拓扑 (depth: 0=无限展开, 1=默认, 2/3...=指定层级)
+python3 <vtags_path>/Standalone/cli.py topo <module> [depth]
 
-# 查看模块信息
-python3 <vtags_path>/Standalone/cli.py -db ./vtags.db info <module>
+# 查看模块调用追踪链 (从顶层到此模块的实例化路径)
+python3 <vtags_path>/Standalone/cli.py trace <module>
 
-# 搜索模块
-python3 <vtags_path>/Standalone/cli.py -db ./vtags.db search "*pattern*"
+# 查看模块详细信息 (IO、实例等)
+python3 <vtags_path>/Standalone/cli.py info <module>
+
+# 查看模块文件列表 (模块及所有子模块的文件)
+python3 <vtags_path>/Standalone/cli.py files <module>
+
+# 搜索模块 (支持 * 和 ? 通配符)
+python3 <vtags_path>/Standalone/cli.py search "*pattern*"
 
 # 追踪信号源
-python3 <vtags_path>/Standalone/cli.py -db ./vtags.db strace <signal> <file> <line>
+python3 <vtags_path>/Standalone/cli.py strace <signal> <file> <line>
 
 # 追踪信号目的地
-python3 <vtags_path>/Standalone/cli.py -db ./vtags.db dtrace <signal> <file> <line>
+python3 <vtags_path>/Standalone/cli.py dtrace <signal> <file> <line>
+
+# JSON 格式输出 (方便程序解析)
+python3 <vtags_path>/Standalone/cli.py -j info <module>
+
+# VCD 波形分析 (需要安装 vcdvcd: pip install vcdvcd)
+# 列出 VCD 文件中的所有信号
+python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --list
+
+# 按模式过滤信号
+python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --list --pattern "*clk*"
+
+# 分析指定信号
+python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req
+
+# 结合代码位置分析信号 (自动确定实例路径)
+python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req --file rtl/xxx.v --line 100
+
+# JSON 格式输出
+python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req -j
 ```
 
 ## 生成 vtags.db 数据库
@@ -79,10 +107,132 @@ vtags-standalone/
 │   └── SKILL.md       # OpenCode skill 定义
 └── vtags/             # vtags 完整源码
     ├── Standalone/    # 独立命令行工具
+    │   ├── cli.py         # 命令行入口
+    │   ├── TraceAPI.py    # 追踪 API
+    │   ├── SignalTrace.py # 信号追踪
+    │   ├── ModuleTrace.py # 模块拓扑
+    │   └── VCDAnalyzer.py # VCD 波形分析
     ├── Parser/        # C Parser
+    │   ├── Parser.c       # Parser 源码
+    │   └── parser         # 编译后的二进制
     ├── Lib/           # 核心库
     └── ...
 ```
+
+## VCD 波形分析功能
+
+vtags-standalone 支持 VCD 波形文件分析，结合信号追踪帮助定位问题。
+
+### 安装依赖
+
+```bash
+pip install vcdvcd
+```
+
+### 功能特性
+
+- 列出 VCD 文件中的所有信号
+- 按模式过滤信号（支持在信号名和路径中搜索）
+- 分析信号变化时序
+- 检测信号异常（如始终为 0/X/Z）
+- 结合 Verilog 代码位置自动确定实例路径
+- 解析 VCD scope 层级结构
+
+### 功能状态
+
+| 功能 | 命令 | 状态 | 说明 |
+|------|------|------|------|
+| 列出信号 | `vcd <file> --list` | ✅ 可用 | 显示 VCD 中所有信号 |
+| 模式过滤 | `vcd <file> --list --pattern "*clk*"` | ✅ 可用 | 在信号名和路径中搜索 |
+| 分析信号 | `vcd <file> --signal <name>` | ✅ 可用 | 智能匹配信号路径 |
+| 代码定位 | `vcd <file> --signal <name> --file --line` | ⚠️ 部分 | 实例路径自动定位 |
+| 异常检测 | 自动检测 | ✅ 可用 | 检测信号卡死、始终为 X/Z |
+
+### 使用示例
+
+```bash
+# 列出所有信号
+python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --list
+
+# 按模式过滤信号
+python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --list --pattern "*clk*"
+
+# 分析指定信号
+python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req
+
+# 结合代码位置分析信号 (自动确定实例路径)
+python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req --file rtl/xxx.v --line 100
+
+# JSON 格式输出
+python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req -j
+```
+
+### 输出示例
+
+```
+Signal: w_tx1_req
+VCD Path: switch_core_top.rx_mac_mng_inst.w_tx1_req
+Match Type: exact_name
+Width: 1 bit(s)
+
+Timeline (3 transitions):
+  #0: 0
+  #1206000: 0
+  #2400000: 0
+
+Warnings:
+  [!] Signal stuck at 0 - check driver logic
+```
+
+### Python API
+
+```python
+from Standalone import TraceAPI, VCDAnalyzer
+
+# 初始化 API
+api = TraceAPI('/path/to/vtags.db')
+
+# 方法 1: 使用高级 API
+result = api.analyze_signal_waveform(
+    'waveform.vcd',
+    'signal_name',
+    'rtl/module.v',  # 可选，用于确定实例路径
+    100              # 可选，行号
+)
+print(result['timeline'])       # [(time, value), ...]
+print(result['anomalies'])      # 异常检测结果
+
+# 方法 2: 使用底层 VCDAnalyzer
+analyzer = VCDAnalyzer('waveform.vcd')
+analyzer.parse()
+
+# 列出所有信号
+signals = analyzer.list_signals()
+
+# 按模式过滤
+clk_signals = analyzer.list_signals(pattern="*clk*")
+
+# 查找信号 (返回匹配列表)
+matches = analyzer.find_signal('clk')
+
+# 获取时序
+timeline = analyzer.get_signal_timeline('top.clk')
+
+# 检测异常
+anomalies = analyzer.detect_anomalies('top.clk')
+
+# 获取标识符映射
+id_mapping = analyzer.get_id_mapping()
+
+# 获取 scope 层级
+scopes = analyzer.get_scopes()
+```
+
+### 限制与注意事项
+
+1. **信号名匹配**：VCD 中的信号路径可能与 Verilog 实例路径不完全一致，建议使用 `--file --line` 参数提供上下文
+2. **大型 VCD 文件**：解析大型 VCD 文件可能较慢，建议先用 `--list` 查看规模
+3. **标识符映射**：部分仿真器生成的 VCD 使用简短标识符，已支持解析但匹配可能需要调整
 
 ## 更多信息
 
