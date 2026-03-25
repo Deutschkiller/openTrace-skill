@@ -1,0 +1,14 @@
+Metadata-Version: 3.0
+Name: vtags
+Version: 3.11
+Summary: Python subprocess interface
+Home-page: https:http://www.vim.org/scripts/script.php?script_id=5494
+Author: Jun Cao
+Author-email: 664089062@qq.com
+License: Jun Cao
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 2.6
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3.+
+Classifier: Programming Language :: C
