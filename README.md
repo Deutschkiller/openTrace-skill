@@ -309,6 +309,16 @@ Sources:
 
 openTrace-skill 支持 VCD 波形文件分析，结合信号追踪帮助定位问题。
 
+### 信号路径格式
+
+`--signal` 参数支持以下格式：
+
+1. **完整路径**: `tb_vp_004.o_cpu_mac0_axi_data_last`
+2. **信号名**: `o_cpu_mac0_axi_data_last` (推荐)
+3. **部分匹配**: `cpu_mac0_axi_data_last`
+
+**注意**: 如果信号名在多个位置存在，建议使用完整路径或结合 `--file --line` 参数。
+
 ### 功能状态
 
 | 功能 | 命令 | 状态 | 说明 |
@@ -406,7 +416,7 @@ anomalies = analyzer.detect_anomalies('top.clk')
 | 条件赋值追踪 | ✅ | v3.12 | 显示赋值条件 |
 | case 语句条件 | ✅ | v3.14 | 支持 case/casez/casex 分支条件 |
 | 实例路径显示 | ✅ | v3.12 | 区分多实例场景 |
-| VCD 波形分析 | ✅ | v3.12 | 时序和异常检测 |
+| VCD 波形分析 | ✅ | v3.14.1 | 时序和异常检测，支持完整路径匹配 |
 | 顶层端口检测 | ✅ | v3.12 | 自动识别顶层 input/output |
 | 依赖图导出 | ✅ | v1.0 | 导出 DOT/Mermaid/JSON 格式 |
 | 统计信息 | ✅ | v3.14 | 数据库模块/实例/信号统计 |
@@ -454,8 +464,13 @@ openTrace-skill/
 
 ## 版本历史
 
-### v3.14 (当前)
+### v3.14.1 (当前)
+- ✅ VCD 信号匹配支持完整路径格式
+- ✅ CLI `--signal` 与 Python API 行为一致
+
+### v3.14
 - ✅ case 语句条件追踪（支持简写和 begin/end 两种形式）
+- ✅ 统计信息 (`stats` 命令)
 
 ### v3.13
 - ✅ 递归追踪支持 maybe 分支

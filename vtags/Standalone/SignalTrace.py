@@ -1624,7 +1624,7 @@ class SignalTrace:
                 branch_value = case_branch_match.group(1).strip()
                 current_branch = branch_value
                 branch_start = i
-                begin_count = 1
+                begin_count = 0
                 in_branch = True
             else:
                 # 形式2: default: begin ... end
@@ -1632,7 +1632,7 @@ class SignalTrace:
                 if default_match:
                     current_branch = "default"
                     branch_start = i
-                    begin_count = 1
+                    begin_count = 0
                     in_branch = True
                 elif not in_branch:
                     # 形式3: case_value: statement; (简写形式，无 begin)

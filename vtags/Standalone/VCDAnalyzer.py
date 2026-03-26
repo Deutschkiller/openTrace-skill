@@ -277,7 +277,7 @@ class VCDAnalyzer:
         查找精确匹配
 
         Args:
-            signal_name: 信号名
+            signal_name: 信号名或完整路径
             instance_path: 实例路径
 
         Returns:
@@ -286,6 +286,17 @@ class VCDAnalyzer:
         exact_matches = []
 
         for vcd_path in self._signals:
+            # 优先：完整路径精确匹配
+            if vcd_path == signal_name:
+                return [
+                    {
+                        "vcd_path": vcd_path,
+                        "score": 100,
+                        "match_type": "exact_full_path",
+                    }
+                ]
+
+            # 信号名匹配（去除路径前缀）
             vcd_signal_name = vcd_path.split(".")[-1]
 
             if vcd_signal_name != signal_name:

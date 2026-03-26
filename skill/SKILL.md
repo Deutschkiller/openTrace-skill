@@ -287,6 +287,16 @@ python3 {{VTAGS_PATH}}/Standalone/cli.py -db ./vtags.db -j info switch_core_top
 pip install vcdvcd
 ```
 
+#### 信号路径格式
+
+`--signal` 参数支持以下格式：
+
+1. **完整路径**: `tb_vp_004.o_cpu_mac0_axi_data_last`
+2. **信号名**: `o_cpu_mac0_axi_data_last` (推荐)
+3. **部分匹配**: `cpu_mac0_axi_data_last`
+
+**注意**: 如果信号名在多个位置存在，建议使用完整路径或结合 `--file --line` 参数。
+
 #### 列出 VCD 中的信号
 ```bash
 python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> vcd <vcd_file> --list

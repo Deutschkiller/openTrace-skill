@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.14.2] - 2025-03-26
+
+### Fixed
+- Case condition tracing: fix `begin_count` double-counting bug in `_parse_case_branches()`
+- Case branches with `begin/end` blocks now correctly identified as `[case: ...]` instead of `[condition: ...]`
+
+## [3.14.1] - 2025-03-26
+
+### Fixed
+- VCD signal matching now supports full path format (e.g., `tb_vp_004.signal_name`)
+- CLI `--signal` parameter now consistent with Python API behavior
+- `--list` output paths can now be used directly with `--signal`
+
 ## [3.14.0] - 2025-03-26
 
 ### Added
