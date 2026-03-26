@@ -38,7 +38,7 @@ OpenCode 会自动加载 vtags-standalone skill 并执行相应命令。
 
 ```bash
 # CLI 工具会自动向上搜索 vtags.db，也可用 -db 显式指定
-# python3 <vtags_path>/Standalone/cli.py -db ./vtags.db <command>
+# 以下示例假设在 vtags.db 所在目录运行，或使用 -db 参数指定路径
 
 # 列出顶层模块
 python3 <vtags_path>/Standalone/cli.py tops
@@ -69,6 +69,12 @@ python3 <vtags_path>/Standalone/cli.py dtrace <signal> <file> <line>
 
 # 递归追踪信号目的地
 python3 <vtags_path>/Standalone/cli.py dtrace <signal> <file> <line> -r 0
+
+# 获取信号的完整实例路径列表 (默认返回 5 条)
+python3 <vtags_path>/Standalone/cli.py strace <signal> <file> <line> --full-path
+
+# 指定返回数量
+python3 <vtags_path>/Standalone/cli.py strace <signal> <file> <line> --full-path 10
 
 # JSON 格式输出 (方便程序解析)
 python3 <vtags_path>/Standalone/cli.py -j info <module>
@@ -136,7 +142,7 @@ Terminated: binary constant assignment
 |---------|------|
 | 常量赋值 | 信号被赋值为常量 (如 `1'b0`, `8'hFF`) |
 | 顶层端口 | 到达顶层模块的 input/output 端口 |
-| 宏定义 | 信号来自 `define 宏定义 |
+| 宏定义 | 信号来自 \`define 宏定义 |
 | 循环引用 | 检测到信号循环依赖，输出警告 |
 | 最大深度 | 达到指定的最大追踪深度 |
 
@@ -302,5 +308,5 @@ scopes = analyzer.get_scopes()
 
 ## 更多信息
 
-- vtags 原项目: https://github.com/user/vtags
+- vtags 原项目: https://www.vim.org/scripts/script.php?script_id=5494
 - OpenCode 文档: https://opencode.ai/docs/skills/

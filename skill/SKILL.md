@@ -121,7 +121,7 @@ Sure source:
 递归追踪示例：
 ```bash
 # 递归追踪 5 层深度
-python3 {{VTAGS_PATH}}/Standalone/cli.py strace w_tx1_req rtl/top.v 100 -r 5
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db ./vtags.db strace w_tx1_req rtl/top.v 100 -r 5
 
 # 输出示例:
 ============================================================
@@ -258,6 +258,23 @@ sources = api.trace_signal_source('signal_name', '/path/to/file.v', line, column
 
 # 追踪信号目的地
 dests = api.trace_signal_dest('signal_name', '/path/to/file.v', line, column)
+
+# 递归追踪信号源 (自动追踪多层)
+chain = api.trace_signal_source_recursive('signal_name', '/path/to/file.v', line, column, max_depth=5)
+
+# 递归追踪信号目的地
+chain = api.trace_signal_dest_recursive('signal_name', '/path/to/file.v', line, column, max_depth=5)
+
+# 获取信号完整实例路径
+paths = api.get_signal_full_paths('signal_name', '/path/to/file.v', line, column, trace_type='source', max_paths=5)
+
+# VCD 波形分析
+result = api.analyze_signal_waveform('waveform.vcd', 'signal_name', 'rtl/module.v', line)
+print(result['timeline'])   # [(time, value), ...]
+print(result['anomalies'])  # 异常检测结果
+
+# 列出 VCD 信号
+signals = api.list_vcd_signals('waveform.vcd', pattern='*clk*')
 ```
 
 ## 生成 vtags.db 数据库
