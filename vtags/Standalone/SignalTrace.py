@@ -1579,7 +1579,20 @@ class SignalTrace:
 
     def _parse_case_branches(self, lines, case_line, target_line):
         """
-        解析 case 语句分支
+        解析 case 语句分支（支持 begin/end 和简写形式）
+
+        Args:
+            lines: 文件行列表
+            case_line: case 语句起始行号
+            target_line: 目标赋值语句行号
+
+        Returns:
+            dict: {
+                "condition": "state == IDLE",
+                "branch_type": "case/case_default",
+                "case_expr": "state",
+                "case_value": "IDLE"  # 非 default 时
+            } 或 None
         """
         case_match = re.search(r"case\s*\((.*?)\)\s*$", lines[case_line].strip())
         if not case_match:
@@ -1601,8 +1614,11 @@ class SignalTrace:
             code = self._remove_comments(line)
 
             if re.search(r"\bendcase\b", code):
+                if branch_start is not None and target_line >= branch_start:
+                    return self._make_case_result(case_expr, current_branch)
                 break
 
+            # 形式1: case_value: begin ... end (带 begin/end 块)
             case_branch_match = re.search(r"(.*?)\s*:\s*begin\b", code)
             if case_branch_match:
                 branch_value = case_branch_match.group(1).strip()
@@ -1611,40 +1627,66 @@ class SignalTrace:
                 begin_count = 1
                 in_branch = True
             else:
+                # 形式2: default: begin ... end
                 default_match = re.search(r"default\s*:\s*begin\b", code)
                 if default_match:
                     current_branch = "default"
                     branch_start = i
                     begin_count = 1
                     in_branch = True
+                elif not in_branch:
+                    # 形式3: case_value: statement; (简写形式，无 begin)
+                    simple_case_match = re.search(r"^(\w+)\s*:\s*(.+?)\s*;\s*$", code)
+                    if simple_case_match:
+                        branch_value = simple_case_match.group(1).strip()
+                        if branch_value.lower() != "default":
+                            if i == target_line:
+                                return self._make_case_result(case_expr, branch_value)
+
+                    # 形式4: default: statement; (简写形式)
+                    default_simple_match = re.search(
+                        r"^default\s*:\s*(.+?)\s*;\s*$", code
+                    )
+                    if default_simple_match:
+                        if i == target_line:
+                            return self._make_case_result(case_expr, "default")
 
             if in_branch:
                 begin_count += len(re.findall(r"\bbegin\b", code))
                 begin_count -= len(re.findall(r"\bend\b", code))
 
-                if begin_count <= 0:
-                    in_branch = False
-                    current_branch = None
-
-            if branch_start is not None and branch_start <= target_line <= i:
-                if current_branch:
-                    if current_branch == "default":
-                        return {
-                            "condition": f"{case_expr} == default",
-                            "branch_type": "case_default",
-                            "case_expr": case_expr,
-                        }
-                    else:
-                        return {
-                            "condition": f"{case_expr} == {current_branch}",
-                            "branch_type": "case",
-                            "case_expr": case_expr,
-                            "case_value": current_branch,
-                        }
+                if branch_start is not None and branch_start <= target_line <= i:
+                    if begin_count <= 0:
+                        return self._make_case_result(case_expr, current_branch)
 
             i += 1
 
         return None
+
+    def _make_case_result(self, case_expr, branch_value):
+        """
+        生成 case 条件结果
+
+        Args:
+            case_expr: case 表达式
+            branch_value: 分支值 (或 "default")
+
+        Returns:
+            dict: 条件信息字典
+        """
+        if branch_value == "default":
+            return {
+                "condition": f"{case_expr} == default",
+                "branch_type": "case_default",
+                "case_expr": case_expr,
+            }
+        else:
+            return {
+                "condition": f"{case_expr} == {branch_value}",
+                "branch_type": "case",
+                "case_expr": case_expr,
+                "case_value": branch_value,
+            }
 
     def _parse_nested_conditions(self, lines, always_line, target_line):
         """

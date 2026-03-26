@@ -96,6 +96,20 @@ python3 {{VTAGS_PATH}}/Standalone/cli.py -db ./vtags.db search "*mng*"
 python3 {{VTAGS_PATH}}/Standalone/cli.py -db ./vtags.db search "*_top"
 ```
 
+### trace - 模块调用追踪链
+```bash
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> trace <module>
+```
+
+显示从顶层模块到此模块的实例化路径。
+
+输出示例：
+```
+switch_core_top
+  └── rx_mac_mng_inst(rx_mac_mng)
+        └── target_module_inst(target_module)
+```
+
 ### strace - 信号源追踪
 ```bash
 python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> strace <signal> <file> <line> [column] [-r depth]
@@ -105,6 +119,8 @@ python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> strace <signal> <file> <l
 - `line`: 行号 (从 1 开始)
 - `column`: 列号 (从 0 开始，可选)
 - `-r depth`: 递归追踪深度 (0=无限, 1=单跳, 默认=1)
+- `--full-path`: 获取信号的完整实例路径列表 (默认 5 条)
+- `--full-path N`: 指定返回路径数量
 
 输出示例：
 ```
@@ -142,6 +158,32 @@ Chain (4 levels):
 Terminated: binary constant assignment
 ```
 
+#### 跨模块追踪
+
+支持 Fallback 跨模块追踪，当正常追踪失败时，在父模块实例化处搜索：
+
+```
+Chain (3 levels):
+  [0] w_cpu_mac0_port_link (rx_mac_mng.v:887) [sure]
+      assign w_cpu_mac0_port_link = i_cpu_mac0_port_link
+  [1] i_cpu_mac0_port_link (switch_core_top.v:1126) [fallback]
+      .i_cpu_mac0_port_link(i_cpu_mac0_port_link),
+  [2] i_cpu_mac0_port_link (switch_core_top.v:19) [port] [TERMINAL - TOP_INPUT]
+      input wire i_cpu_mac0_port_link
+
+Terminated: top-level input port
+```
+
+#### 循环引用检测
+
+当检测到循环引用时，会输出警告：
+
+```
+⚠️  CIRCULAR REFERENCE DETECTED:
+  Path: w_signal_a → w_signal_b → w_signal_c → w_signal_a
+  Cannot trace further to avoid infinite loop
+```
+
 ### dtrace - 信号目的地追踪
 ```bash
 python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> dtrace <signal> <file> <line> [column] [-r depth]
@@ -160,7 +202,61 @@ Sure dest:
         .i_rst (i_rst),
   tsn_cb_top:u_match_recovery_0(match_recovery) /path/to/tsn_cb_top.v:205
         .i_rst (i_rst),
+  ```
+
+### --show-conditions - 条件赋值追踪
+
+显示信号赋值的条件逻辑，支持 `if/elsif/else` 和 `case` 语句。
+
+```bash
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> strace --show-conditions <signal> <file> <line>
 ```
+
+输出示例：
+```
+Signal: r_rxack_cnt
+Sources:
+  rx_mac_mng rtl/rx_mac_mng.v:2413 [condition: ack_cnt_rst]
+    r_rxack_cnt <= 12'd0;
+  rx_mac_mng rtl/rx_mac_mng.v:2416 [condition: i_mac0_tx1_ack]
+    r_rxack_cnt <= r_rxack_cnt + 1'b1;
+```
+
+case 语句示例：
+```verilog
+case (state)
+  IDLE: next_state = ACTIVE;
+  ACTIVE: begin
+    next_state = DONE;
+  end
+  default: next_state = IDLE;
+endcase
+```
+
+输出：
+```
+Signal: next_state
+Sources:
+  fsm rtl/fsm.v:10 [condition: state == IDLE]
+    next_state = ACTIVE;
+  fsm rtl/fsm.v:12 [condition: state == ACTIVE]
+    next_state = DONE;
+  fsm rtl/fsm.v:15 [condition: state == default]
+    next_state = IDLE;
+```
+
+支持场景：
+- `if/elsif/else` 条件
+- `case/casez/casex` 语句（支持简写和 begin/end 两种形式）
+
+已知限制：
+- 递归追踪与条件追踪结合时，条件不显示
+- 嵌套条件表达式可能无法完整显示
+
+典型用途：
+1. **理解计数器逻辑**：快速定位复位条件和递增条件
+2. **状态机分析**：识别状态转移条件
+3. **多路选择器**：理解不同条件下的数据路径选择
 
 ### -j JSON 格式输出
 ```bash

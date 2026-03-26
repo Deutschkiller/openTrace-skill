@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.14.0] - 2025-03-26
+
+### Added
+- `case` statement condition tracing support
+- Support both shorthand (`case_val: statement;`) and block (`case_val: begin...end`) formats
+- Support `case/casez/casex` statements
+
+## [3.13.0] - 2025-03-26
+
+### Added
+- Recursive tracing support for `maybe` branches
+- Complex expression support (bit-select, concatenation, ternary operator)
+
+### Fixed
+- Recursive trace now properly handles all branch types
+
+## [3.12.0] - 2025-03-26
+
+### Added
+- VCD waveform analysis (`vcd` command)
+- Cross-module tracing (Fallback mechanism)
+- Conditional assignment tracing (`--show-conditions`)
+- Full instance path display (`--full-path`)
+- Top-level port auto-detection
+- Signal anomaly detection (stuck-at, X/Z states)
+
+### Improved
+- Better signal matching in VCD files
+- Instance path determination from code location
+
 ## [1.0.0] - 2025-03-26
 
 ### Added
@@ -15,10 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Module topology visualization
 - Signal tracing (source and destination)
 - Recursive signal tracing with loop detection
-- VCD waveform analysis support
 - JSON output format for programmatic access
 
-### Features
+### Commands
 - `tops` - List all top-level modules
 - `topo` - Show module hierarchy
 - `info` - Display module details (IO, instances)
@@ -26,7 +55,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `search` - Search modules with wildcard support
 - `strace` - Trace signal source
 - `dtrace` - Trace signal destination
-- `vcd` - Analyze VCD waveform files
 
 ### Documentation
 - Comprehensive README with usage examples
@@ -39,6 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial standalone version based on vtags Vim plugin
 - Basic module analysis and signal tracing
 
-[Unreleased]: https://github.com/Deutschkiller/openTrace-skill/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Deutschkiller/openTrace-skill/compare/v3.14.0...HEAD
+[3.14.0]: https://github.com/Deutschkiller/openTrace-skill/compare/v3.13.0...v3.14.0
+[3.13.0]: https://github.com/Deutschkiller/openTrace-skill/compare/v3.12.0...v3.13.0
+[3.12.0]: https://github.com/Deutschkiller/openTrace-skill/compare/v1.0.0...v3.12.0
 [1.0.0]: https://github.com/Deutschkiller/openTrace-skill/releases/tag/v1.0.0
 [0.9.0]: https://github.com/Deutschkiller/openTrace-skill/releases/tag/v0.9.0
