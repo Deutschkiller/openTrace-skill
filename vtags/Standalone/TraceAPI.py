@@ -467,3 +467,63 @@ class TraceAPI:
         analyzer.parse()
 
         return analyzer.list_signals(pattern)
+
+    def get_stats(self):
+        """
+        获取数据库统计信息
+
+        Returns:
+            dict: {
+                "database": "/path/to/vtags.db",
+                "modules": 156,
+                "instances": 892,
+                "signals": 15420,
+                "files": 85,
+                "last_updated": "2026-03-26"
+            }
+        """
+        self._init_db()
+        from datetime import datetime
+
+        stats = {
+            "database": self.vtags_db_path,
+            "modules": 0,
+            "instances": 0,
+            "signals": 0,
+            "files": 0,
+            "last_updated": None,
+        }
+
+        pub_dir = os.path.join(self.vtags_db_path, "parser_out", "pub")
+        if os.path.isdir(pub_dir):
+            parser_files = [
+                f
+                for f in os.listdir(pub_dir)
+                if f.startswith("parser_") and f.endswith(".py")
+            ]
+            stats["modules"] = len(parser_files)
+
+            for f in parser_files:
+                filepath = os.path.join(pub_dir, f)
+                try:
+                    with open(filepath, "r") as fp:
+                        content = fp.read()
+                        stats["instances"] += content.count("'submodule_name_sr'")
+                        stats["signals"] += content.count("'name_sr'") - content.count(
+                            "'module_name_sr'"
+                        )
+                except:
+                    pass
+
+            stats["files"] = stats["modules"]
+
+        db_path = self.vtags_db_path
+        if os.path.isdir(db_path):
+            log_path = os.path.join(db_path, "vtags_db.log")
+            if os.path.exists(log_path):
+                mtime = os.path.getmtime(log_path)
+            else:
+                mtime = os.path.getmtime(db_path)
+            stats["last_updated"] = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+
+        return stats

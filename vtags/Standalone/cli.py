@@ -519,6 +519,8 @@ Examples:
     )
     parser_export.add_argument("-o", "--output", help="Output file (default: stdout)")
 
+    parser_stats = subparsers.add_parser("stats", help="Show database statistics")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -674,6 +676,18 @@ Examples:
                 print(f"Dependencies exported to {args.output}")
             else:
                 print(result)
+
+        elif args.command == "stats":
+            result = api.get_stats()
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                print(f"Database: {result['database']}")
+                print(f"  Modules: {result['modules']}")
+                print(f"  Instances: {result['instances']}")
+                print(f"  Signals: {result['signals']}")
+                print(f"  Files: {result['files']}")
+                print(f"  Last updated: {result['last_updated']}")
 
         else:
             parser.print_help()

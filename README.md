@@ -124,6 +124,25 @@ python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req --fil
 
 # JSON 格式输出
 python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req -j
+
+# 导出模块依赖图
+# 导出 DOT 格式 (用于 Graphviz)
+python3 <vtags_path>/Standalone/cli.py export-deps <module>
+
+# 导出 Mermaid 格式 (支持 GitHub/GitLab 渲染)
+python3 <vtags_path>/Standalone/cli.py export-deps <module> --format mermaid
+
+# 导出到文件
+python3 <vtags_path>/Standalone/cli.py export-deps <module> -o deps.dot
+
+# 指定展开深度
+python3 <vtags_path>/Standalone/cli.py export-deps <module> --depth 2
+
+# 生成 PNG 图片 (需要安装 graphviz)
+python3 <vtags_path>/Standalone/cli.py export-deps <module> -o deps.dot && dot -Tpng deps.dot -o deps.png
+
+# 查看数据库统计信息
+python3 <vtags_path>/Standalone/cli.py stats
 ```
 
 ## 典型工作流
@@ -389,6 +408,8 @@ anomalies = analyzer.detect_anomalies('top.clk')
 | 实例路径显示 | ✅ | v3.12 | 区分多实例场景 |
 | VCD 波形分析 | ✅ | v3.12 | 时序和异常检测 |
 | 顶层端口检测 | ✅ | v3.12 | 自动识别顶层 input/output |
+| 依赖图导出 | ✅ | v1.0 | 导出 DOT/Mermaid/JSON 格式 |
+| 统计信息 | ✅ | v3.14 | 数据库模块/实例/信号统计 |
 
 ## 生成 vtags.db 数据库
 

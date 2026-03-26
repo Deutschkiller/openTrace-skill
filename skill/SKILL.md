@@ -324,6 +324,77 @@ python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> vcd <vcd_file> --signal <
 
 会自动根据文件位置确定实例路径，精确匹配 VCD 中的信号。
 
+### export-deps - 导出模块依赖图
+
+导出模块依赖关系，支持多种格式。
+
+```bash
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> export-deps <module> [--format FORMAT] [--depth DEPTH] [-o OUTPUT]
+```
+
+参数：
+- `--format`: 导出格式 (dot/json/mermaid，默认 dot)
+- `--depth`: 展开深度 (0=无限，默认 0)
+- `-o`: 输出文件 (默认 stdout)
+
+#### 导出 DOT 格式
+
+```bash
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> export-deps switch_core_top
+
+# 输出示例:
+digraph module_deps {
+    rankdir=TB;
+    node [shape=box, style=filled, fillcolor=lightblue];
+
+    switch_core_top [label="switch_core_top\nswitch_core_top.v"];
+    rx_mac_mng [label="rx_mac_mng\nrx_mac_mng.v"];
+    tsn_cb_top [label="tsn_cb_top\ntsn_cb_top.v"];
+
+    switch_core_top -> rx_mac_mng [label="rx_mac_mng_inst"];
+    switch_core_top -> tsn_cb_top [label="tsn_cb_top_inst"];
+}
+```
+
+#### 生成图片
+
+```bash
+# 导出 DOT 文件
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> export-deps switch_core_top -o deps.dot
+
+# 使用 Graphviz 生成 PNG
+dot -Tpng deps.dot -o deps.png
+```
+
+#### 导出 Mermaid 格式
+
+```bash
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> export-deps switch_core_top --format mermaid
+
+# 输出示例:
+graph TD
+    switch_core_top -->["rx_mac_mng_inst"] rx_mac_mng
+    switch_core_top -->["tsn_cb_top_inst"] tsn_cb_top
+```
+
+Mermaid 格式支持 GitHub/GitLab Markdown 直接渲染。
+
+### stats - 数据库统计信息
+
+```bash
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> stats
+```
+
+输出示例：
+```
+Database: /path/to/vtags.db
+  Modules: 1145
+  Instances: 1955
+  Signals: 30172
+  Files: 1145
+  Last updated: 2026-03-26
+```
+
 ## Python API
 
 ```python
@@ -371,6 +442,15 @@ print(result['anomalies'])  # 异常检测结果
 
 # 列出 VCD 信号
 signals = api.list_vcd_signals('waveform.vcd', pattern='*clk*')
+
+# 导出模块依赖图
+dot_output = api.export_dependencies('module_name', depth=0, format='dot')
+mermaid_output = api.export_dependencies('module_name', depth=2, format='mermaid')
+json_output = api.export_dependencies('module_name', format='json')
+
+# 获取数据库统计信息
+stats = api.get_stats()
+print(f"Modules: {stats['modules']}, Instances: {stats['instances']}")
 ```
 
 ## 生成 vtags.db 数据库
