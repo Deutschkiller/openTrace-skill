@@ -1,6 +1,35 @@
 # openTrace-skill
 
-Verilog HDL 代码导航工具，独立于 Vim。支持模块拓扑、模块追踪、信号追踪、模块搜索、VCD 波形分析等功能。
+Verilog HDL 代码导航工具。支持模块拓扑、模块追踪、信号追踪、模块搜索、VCD 波形分析等功能。
+
+## 功能特性
+
+### 核心能力
+
+| 功能 | 说明 |
+|------|------|
+| 信号追踪 | `strace`/`dtrace` 精确定位信号源和目的地，10秒内完成问题定位 |
+| 模块拓扑 | `topo` 展示模块层次结构，`info` 提供完整的 IO、参数、实例列表 |
+| 搜索功能 | `search` 支持通配符，快速定位相关模块 |
+| JSON 输出 | `-j` 参数输出结构化数据，便于程序化处理和自动化集成 |
+| 独立运行 | 无需 Vim 环境，命令行直接使用，适合集成到其他工具和脚本 |
+
+### 高级功能
+
+- **递归追踪**：自动追踪信号完整传播链，支持跨模块追踪
+- **VCD 波形分析**：结合波形文件分析信号时序和异常
+- **条件赋值追踪**：显示信号赋值的条件逻辑
+- **实例路径完整显示**：区分多实例场景
+
+## 使用场景
+
+| 场景 | 推荐度 | 说明 |
+|------|--------|------|
+| 新项目分析 | ⭐⭐⭐⭐⭐ | 快速理解模块层次和信号流 |
+| Debug 定位 | ⭐⭐⭐⭐⭐ | 精准追踪问题信号，比手动 grep 快 5-10 倍 |
+| 代码审查 | ⭐⭐⭐⭐ | 快速理解模块接口 |
+| 文档生成 | ⭐⭐⭐ | info 输出可转为文档 |
+| 波形分析辅助 | ⭐⭐⭐⭐ | 配合 VCD 使用效果更好 |
 
 ## 快速安装
 
@@ -21,6 +50,7 @@ cd openTrace-skill
 - Python 3.6+
 - GCC（用于编译 Parser）
 - OpenCode（使用 skill 功能）
+- vcdvcd（用于 VCD 波形分析，可选）: `pip install vcdvcd`
 
 ## 使用方法
 
@@ -96,6 +126,46 @@ python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req --fil
 python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req -j
 ```
 
+## 典型工作流
+
+### Debug 场景
+
+```bash
+# 1. 发现问题信号 (仿真日志或波形中发现异常)
+grep "w_tx1_req" simulation.log  # 发现始终为0
+
+# 2. 追踪信号源
+python3 <vtags_path>/Standalone/cli.py strace w_tx1_req rtl/top.v 100
+
+# 3. 查看模块结构
+python3 <vtags_path>/Standalone/cli.py topo rx_mac_mng
+
+# 4. 定位具体代码
+python3 <vtags_path>/Standalone/cli.py info swlist -j | jq '.ios'
+
+# 5. 结合波形分析
+python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req
+
+# 6. 修复问题后验证
+```
+
+### 新项目理解
+
+```bash
+# 1. 找到顶层
+python3 <vtags_path>/Standalone/cli.py tops
+
+# 2. 查看拓扑
+python3 <vtags_path>/Standalone/cli.py topo switch_core_top 2
+
+# 3. 理解关键模块
+python3 <vtags_path>/Standalone/cli.py info crossbar_switch_top
+
+# 4. 追踪关键信号
+python3 <vtags_path>/Standalone/cli.py dtrace i_clk rtl/top.v 10
+python3 <vtags_path>/Standalone/cli.py strace o_mac_valid rtl/top.v 50
+```
+
 ## 递归追踪功能
 
 递归追踪可以自动追踪信号的完整传播链，无需手动多次调用。
@@ -136,8 +206,6 @@ Terminated: binary constant assignment
 
 ### 终止条件
 
-递归追踪会在以下情况终止：
-
 | 终止类型 | 说明 |
 |---------|------|
 | 常量赋值 | 信号被赋值为常量 (如 `1'b0`, `8'hFF`) |
@@ -156,59 +224,71 @@ Terminated: binary constant assignment
   Cannot trace further to avoid infinite loop
 ```
 
-## 生成 vtags.db 数据库
+### 跨模块追踪
+
+支持 Fallback 跨模块追踪，当正常追踪失败时，在父模块实例化处搜索：
+
+```
+Chain (3 levels):
+  [0] w_cpu_mac0_port_link (rx_mac_mng.v:887) [sure]
+      assign w_cpu_mac0_port_link = i_cpu_mac0_port_link
+  [1] i_cpu_mac0_port_link (switch_core_top.v:1126) [fallback]
+      .i_cpu_mac0_port_link(i_cpu_mac0_port_link),
+  [2] i_cpu_mac0_port_link (switch_core_top.v:19) [port] [TERMINAL - TOP_INPUT]
+      input wire i_cpu_mac0_port_link
+
+Terminated: top-level input port
+```
+
+## 条件赋值追踪
+
+显示信号赋值的条件逻辑，减少手动分析 `always` 块的工作量。
+
+### 使用方法
 
 ```bash
-# 进入项目目录
-cd /path/to/verilog/project
+# 追踪信号源并显示条件
+python3 <vtags_path>/Standalone/cli.py strace --show-conditions <signal> <file> <line>
 
-# 创建文件列表
-find . -name "*.v" > design.f
-
-# 生成数据库
-python3 <vtags_path>/vtags.py -f design.f
+# 示例
+python3 <vtags_path>/Standalone/cli.py strace --show-conditions r_rxack_cnt rtl/rx_mac_mng.v 2413
 ```
 
-## 目录结构
+### 输出示例
 
 ```
-openTrace-skill/
-├── README.md          # 本文件
-├── install.sh         # 安装脚本
-├── skill/
-│   └── SKILL.md       # OpenCode skill 定义
-└── vtags/             # vtags 完整源码
-    ├── Standalone/    # 独立命令行工具
-    │   ├── cli.py         # 命令行入口
-    │   ├── TraceAPI.py    # 追踪 API
-    │   ├── SignalTrace.py # 信号追踪
-    │   ├── ModuleTrace.py # 模块拓扑
-    │   └── VCDAnalyzer.py # VCD 波形分析
-    ├── Parser/        # C Parser
-    │   ├── Parser.c       # Parser 源码
-    │   └── parser         # 编译后的二进制
-    ├── Lib/           # 核心库
-    └── ...
+Signal: r_rxack_cnt
+Sources:
+  rx_mac_mng rtl/rx_mac_mng.v:2413 [condition: ack_cnt_rst]
+    r_rxack_cnt <= 12'd0;
+  rx_mac_mng rtl/rx_mac_mng.v:2416 [condition: i_mac0_tx1_ack]
+    r_rxack_cnt <= r_rxack_cnt + 1'b1;
 ```
+
+### 支持场景
+
+| 场景 | 说明 |
+|------|------|
+| `if/elsif` 条件 | `always` 块中的条件赋值 |
+| 端口连接条件 | 模块实例化时的条件连接 |
+
+### 已知限制
+
+| 限制 | 说明 |
+|------|------|
+| `case` 语句 | 不支持 `case/casez/casex` 条件解析 |
+| 递归+条件 | 递归追踪与条件追踪结合时，条件不显示 |
+| 复杂条件 | 嵌套条件表达式可能无法完整显示 |
+
+### 典型用途
+
+1. **理解计数器逻辑**：快速定位复位条件和递增条件
+2. **状态机分析**：识别状态转移条件
+3. **多路选择器**：理解不同条件下的数据路径选择
 
 ## VCD 波形分析功能
 
 openTrace-skill 支持 VCD 波形文件分析，结合信号追踪帮助定位问题。
-
-### 安装依赖
-
-```bash
-pip install vcdvcd
-```
-
-### 功能特性
-
-- 列出 VCD 文件中的所有信号
-- 按模式过滤信号（支持在信号名和路径中搜索）
-- 分析信号变化时序
-- 检测信号异常（如始终为 0/X/Z）
-- 结合 Verilog 代码位置自动确定实例路径
-- 解析 VCD scope 层级结构
 
 ### 功能状态
 
@@ -217,7 +297,7 @@ pip install vcdvcd
 | 列出信号 | `vcd <file> --list` | ✅ 可用 | 显示 VCD 中所有信号 |
 | 模式过滤 | `vcd <file> --list --pattern "*clk*"` | ✅ 可用 | 在信号名和路径中搜索 |
 | 分析信号 | `vcd <file> --signal <name>` | ✅ 可用 | 智能匹配信号路径 |
-| 代码定位 | `vcd <file> --signal <name> --file --line` | ⚠️ 部分 | 实例路径自动定位 |
+| 代码定位 | `vcd <file> --signal <name> --file --line` | ✅ 可用 | 实例路径自动定位 |
 | 异常检测 | 自动检测 | ✅ 可用 | 检测信号卡死、始终为 X/Z |
 
 ### 使用示例
@@ -292,19 +372,81 @@ timeline = analyzer.get_signal_timeline('top.clk')
 
 # 检测异常
 anomalies = analyzer.detect_anomalies('top.clk')
-
-# 获取标识符映射
-id_mapping = analyzer.get_id_mapping()
-
-# 获取 scope 层级
-scopes = analyzer.get_scopes()
 ```
 
-### 限制与注意事项
+## 功能状态总览
 
-1. **信号名匹配**：VCD 中的信号路径可能与 Verilog 实例路径不完全一致，建议使用 `--file --line` 参数提供上下文
-2. **大型 VCD 文件**：解析大型 VCD 文件可能较慢，建议先用 `--list` 查看规模
-3. **标识符映射**：部分仿真器生成的 VCD 使用简短标识符，已支持解析但匹配可能需要调整
+| 功能 | 状态 | 版本 | 说明 |
+|------|------|------|------|
+| 模块拓扑 | ✅ | v1.0 | 展示模块层次结构 |
+| 模块信息 | ✅ | v1.0 | IO、参数、实例列表 |
+| 模块搜索 | ✅ | v1.0 | 支持通配符 |
+| 信号追踪 | ✅ | v1.0 | 单跳源/目的地追踪 |
+| 递归追踪 | ✅ | v3.13 | 自动追踪完整传播链 |
+| 跨模块追踪 | ✅ | v3.12 | Fallback 机制 |
+| 条件赋值追踪 | ✅ | v3.12 | 显示赋值条件 |
+| 实例路径显示 | ✅ | v3.12 | 区分多实例场景 |
+| VCD 波形分析 | ✅ | v3.12 | 时序和异常检测 |
+| 顶层端口检测 | ✅ | v3.12 | 自动识别顶层 input/output |
+
+## 生成 vtags.db 数据库
+
+```bash
+# 进入项目目录
+cd /path/to/verilog/project
+
+# 创建文件列表
+find . -name "*.v" > design.f
+
+# 生成数据库
+python3 <vtags_path>/vtags.py -f design.f
+```
+
+## 目录结构
+
+```
+openTrace-skill/
+├── README.md          # 本文件
+├── CHANGELOG.md       # 版本变更记录
+├── CONTRIBUTING.md    # 贡献指南
+├── Makefile           # 常用命令
+├── requirements.txt   # Python 依赖
+├── install.sh         # 安装脚本
+├── skill/
+│   └── SKILL.md       # OpenCode skill 定义
+├── docs/              # 文档
+├── examples/          # 使用示例
+└── vtags/             # vtags 完整源码
+    ├── Standalone/    # 独立命令行工具
+    │   ├── cli.py         # 命令行入口
+    │   ├── TraceAPI.py    # 追踪 API
+    │   ├── SignalTrace.py # 信号追踪
+    │   ├── ModuleTrace.py # 模块拓扑
+    │   └── VCDAnalyzer.py # VCD 波形分析
+    ├── Parser/        # C Parser
+    │   ├── Parser.c       # Parser 源码
+    │   └── parser         # 编译后的二进制
+    ├── Lib/           # 核心库
+    └── ...
+```
+
+## 版本历史
+
+### v3.13 (当前)
+- ✅ 递归追踪支持 maybe 分支
+- ✅ 支持复杂表达式（位选、拼接、三元运算）
+
+### v3.12
+- ✅ VCD 波形分析功能
+- ✅ 跨模块追踪 (Fallback 机制)
+- ✅ 条件赋值追踪
+- ✅ 实例路径完整显示
+- ✅ 顶层端口自动检测
+
+### v1.0
+- ✅ 基础模块分析 (topo, info, files, search)
+- ✅ 信号追踪 (strace, dtrace)
+- ✅ JSON 输出支持
 
 ## 更多信息
 
