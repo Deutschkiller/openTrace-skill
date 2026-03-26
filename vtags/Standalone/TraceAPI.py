@@ -254,6 +254,41 @@ class TraceAPI:
             signal_name, file_path, line_num, column_num, "dest", max_depth
         )
 
+    def get_signal_full_paths(
+        self,
+        signal_name,
+        file_path,
+        line_num,
+        column_num=0,
+        trace_type="dest",
+        max_paths=5,
+    ):
+        """
+        获取信号的完整实例路径列表
+
+        Args:
+            signal_name: 信号名称
+            file_path: 文件路径
+            line_num: 行号 (0-indexed)
+            column_num: 列号 (0-indexed, 可选)
+            trace_type: 'source' 或 'dest' (默认 'dest')
+            max_paths: 最大返回数量 (默认 5)
+
+        Returns:
+            dict: {
+                "signal_name": 信号名,
+                "trace_type": 追踪类型,
+                "max_paths": 最大数量,
+                "paths": 路径列表,
+                "total_found": 总数,
+                "limited": 是否达到上限
+            }
+        """
+        self._init_db()
+        return self._signal_trace.get_signal_full_paths(
+            signal_name, file_path, line_num, column_num, trace_type, max_paths
+        )
+
     def get_module_info(self, module_name):
         """
         获取模块信息

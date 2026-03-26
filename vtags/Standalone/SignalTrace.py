@@ -597,6 +597,147 @@ class SignalTrace:
 
         return result
 
+    def get_signal_full_paths(
+        self, signal_name, file_path, line_num, column_num, trace_type, max_paths=5
+    ):
+        """
+        获取信号的完整实例路径列表
+
+        Args:
+            signal_name: 信号名
+            file_path: 文件路径
+            line_num: 行号 (0-indexed)
+            column_num: 列号 (0-indexed)
+            trace_type: 'source' 或 'dest'
+            max_paths: 最大返回数量 (默认 5)
+
+        Returns:
+            dict: {
+                "signal_name": "i_clk",
+                "trace_type": "dest",
+                "max_paths": 5,
+                "paths": [...],
+                "total_found": 12,
+                "limited": True/False
+            }
+        """
+        result = {
+            "signal_name": signal_name,
+            "trace_type": trace_type,
+            "max_paths": max_paths,
+            "paths": [],
+            "total_found": 0,
+            "limited": False,
+        }
+
+        trace_result = self.trace(
+            signal_name, file_path, line_num, column_num, trace_type
+        )
+
+        sure_list = trace_result.get("sure", [])
+        maybe_list = trace_result.get("maybe", [])
+
+        all_items = sure_list + maybe_list
+
+        all_paths = []
+        seen_paths = set()
+
+        for item in all_items:
+            module = item.get("module", "")
+            instance = item.get("instance", "")
+            file = item.get("file", "")
+            line = item.get("line", 0)
+            code = item.get("code", "")
+
+            full_path = self._build_full_instance_path(module, instance)
+
+            if full_path in seen_paths:
+                continue
+
+            seen_paths.add(full_path)
+
+            is_top_port = False
+            if not instance and code:
+                if re.search(r"^\s*(input|output)\s+", code):
+                    father_list = FileInfLib.get_father_inst_list(module)
+                    if not father_list:
+                        is_top_port = True
+
+            path_info = {
+                "full_path": full_path,
+                "module": module,
+                "instance": instance,
+                "file": file,
+                "line": line,
+                "code": code.strip() if code else "",
+                "is_top_port": is_top_port,
+            }
+            all_paths.append(path_info)
+
+        result["total_found"] = len(all_paths)
+
+        if len(all_paths) > max_paths:
+            result["paths"] = all_paths[:max_paths]
+            result["limited"] = True
+        else:
+            result["paths"] = all_paths
+            result["limited"] = False
+
+        return result
+
+    def _build_full_instance_path(self, module_name, instance_name=""):
+        """
+        构建从顶层到当前模块/实例的完整路径
+
+        Args:
+            module_name: 模块名
+            instance_name: 实例名（可选）
+
+        Returns:
+            str: 完整实例路径，如 "switch_core_top.rx_mac_mng_inst"
+        """
+        path_parts = []
+
+        if instance_name and ":" in instance_name:
+            inst_match = re.match(r":(\w+)\((\w+)\)", instance_name)
+            if inst_match:
+                path_parts.append(inst_match.group(1))
+        elif instance_name:
+            path_parts.append(instance_name)
+
+        current_module = module_name
+        visited = set()
+        top_module = None
+
+        while current_module and current_module not in visited:
+            visited.add(current_module)
+
+            try:
+                father_list = FileInfLib.get_father_inst_list(current_module)
+            except (KeyError, Exception):
+                father_list = None
+
+            if not father_list:
+                top_module = current_module
+                break
+
+            father_inst = father_list[0]
+            parts = father_inst.split(".")
+            if len(parts) == 2:
+                father_module, inst_name = parts
+                path_parts.insert(0, inst_name)
+                current_module = father_module
+            else:
+                break
+
+        if top_module:
+            path_parts.insert(0, top_module)
+
+        if path_parts:
+            return ".".join(path_parts)
+
+        return module_name
+
     def trace_recursive(
         self, signal_name, file_path, line_num, column_num, trace_type, max_depth=5
     ):

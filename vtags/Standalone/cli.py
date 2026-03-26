@@ -297,6 +297,56 @@ def print_vcd_analysis(result, use_json=False, max_timeline=20):
             print(f"Final value: {anomalies.get('final_value', '?')}")
 
 
+def print_full_paths(result, use_json=False):
+    """打印完整实例路径"""
+    if use_json:
+        print(json.dumps(result, indent=2))
+        return
+
+    signal_name = result.get("signal_name", "")
+    trace_type = result.get("trace_type", "")
+    paths = result.get("paths", [])
+    total_found = result.get("total_found", 0)
+    limited = result.get("limited", False)
+    max_paths = result.get("max_paths", 5)
+
+    print(f"\n{'=' * 60}")
+    print(f"Signal: {signal_name}")
+    print(f"Trace Type: {trace_type} (--full-path)")
+    print(f"{'=' * 60}")
+
+    if not paths:
+        print(f"\nNo instance paths found.")
+        return
+
+    displayed = len(paths)
+    if limited:
+        print(
+            f"\nFull Instance Paths ({displayed} of {total_found}, limited to {max_paths}):"
+        )
+    else:
+        print(f"\nFull Instance Paths ({displayed}):")
+
+    for i, path_info in enumerate(paths):
+        full_path = path_info.get("full_path", "")
+        file_path = path_info.get("file", "")
+        line_num = path_info.get("line", 0) + 1
+        code = path_info.get("code", "").strip()
+        is_top_port = path_info.get("is_top_port", False)
+
+        top_port_str = " [TOP PORT]" if is_top_port else ""
+        print(f"  [{i}] {full_path}{top_port_str}")
+        if file_path:
+            print(f"        {file_path}:{line_num}")
+        if code:
+            print(f"        {code[:70]}")
+
+    if limited:
+        print(
+            f"\n  ... {total_found - displayed} more paths not shown (use --full-path {total_found} to see all)"
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="vtags standalone command line tool",
@@ -358,6 +408,14 @@ Examples:
         default=1,
         help="Recursive trace depth (0=unlimited, 1=single hop, default=1)",
     )
+    parser_strace.add_argument(
+        "--full-path",
+        nargs="?",
+        type=int,
+        const=5,
+        default=None,
+        help="Show full instance paths (default: 5)",
+    )
 
     parser_dtrace = subparsers.add_parser("dtrace", help="Trace signal destination")
     parser_dtrace.add_argument("signal", help="Signal name")
@@ -372,6 +430,14 @@ Examples:
         type=int,
         default=1,
         help="Recursive trace depth (0=unlimited, 1=single hop, default=1)",
+    )
+    parser_dtrace.add_argument(
+        "--full-path",
+        nargs="?",
+        type=int,
+        const=5,
+        default=None,
+        help="Show full instance paths (default: 5)",
     )
 
     parser_vcd = subparsers.add_parser("vcd", help="Analyze VCD waveform file")
@@ -470,7 +536,17 @@ Examples:
                     print(m)
 
         elif args.command == "strace":
-            if args.recursive == 1:
+            if args.full_path is not None:
+                result = api.get_signal_full_paths(
+                    args.signal,
+                    args.file,
+                    args.line - 1,
+                    args.column,
+                    trace_type="source",
+                    max_paths=args.full_path,
+                )
+                print_full_paths(result, args.json)
+            elif args.recursive == 1:
                 result = api.trace_signal_source(
                     args.signal, args.file, args.line - 1, args.column
                 )
@@ -483,7 +559,17 @@ Examples:
                 print_recursive_trace(result, args.json)
 
         elif args.command == "dtrace":
-            if args.recursive == 1:
+            if args.full_path is not None:
+                result = api.get_signal_full_paths(
+                    args.signal,
+                    args.file,
+                    args.line - 1,
+                    args.column,
+                    trace_type="dest",
+                    max_paths=args.full_path,
+                )
+                print_full_paths(result, args.json)
+            elif args.recursive == 1:
                 result = api.trace_signal_dest(
                     args.signal, args.file, args.line - 1, args.column
                 )
