@@ -148,7 +148,24 @@ class TraceAPI:
         self._init_db()
         return self._module_trace.get_all_top_modules()
 
-    def trace_signal_source(self, signal_name, file_path, line_num, column_num=0):
+    def export_dependencies(self, module_name, depth=0, format="dot"):
+        """
+        导出模块依赖图
+
+        Args:
+            module_name: 模块名称
+            depth: 展开深度 (0=无限)
+            format: 导出格式 ('dot', 'json', 'mermaid')
+
+        Returns:
+            str: 导出的依赖图字符串
+        """
+        self._init_db()
+        return self._module_trace.export_dependencies(module_name, depth, format)
+
+    def trace_signal_source(
+        self, signal_name, file_path, line_num, column_num=0, show_conditions=False
+    ):
         """
         追踪信号源
 
@@ -157,6 +174,7 @@ class TraceAPI:
             file_path: 文件路径
             line_num: 行号 (0-indexed)
             column_num: 列号 (0-indexed, 可选)
+            show_conditions: 是否显示条件信息
 
         Returns:
             dict: 追踪结果:
@@ -164,16 +182,10 @@ class TraceAPI:
                 - trace_type: 'source'
                 - sure: 确定的源列表
                 - maybe: 可能的源列表
-                每项包含:
-                    - file: 文件路径
-                    - line: 行号
-                    - column: 列号
-                    - code: 代码行
-                    - module: 所在模块
         """
         self._init_db()
         return self._signal_trace.trace(
-            signal_name, file_path, line_num, column_num, "source"
+            signal_name, file_path, line_num, column_num, "source", show_conditions
         )
 
     def trace_signal_source_recursive(
@@ -204,7 +216,9 @@ class TraceAPI:
             signal_name, file_path, line_num, column_num, "source", max_depth
         )
 
-    def trace_signal_dest(self, signal_name, file_path, line_num, column_num=0):
+    def trace_signal_dest(
+        self, signal_name, file_path, line_num, column_num=0, show_conditions=False
+    ):
         """
         追踪信号目的地
 
@@ -213,6 +227,7 @@ class TraceAPI:
             file_path: 文件路径
             line_num: 行号 (0-indexed)
             column_num: 列号 (0-indexed, 可选)
+            show_conditions: 是否显示条件信息
 
         Returns:
             dict: 追踪结果:
@@ -223,7 +238,7 @@ class TraceAPI:
         """
         self._init_db()
         return self._signal_trace.trace(
-            signal_name, file_path, line_num, column_num, "dest"
+            signal_name, file_path, line_num, column_num, "dest", show_conditions
         )
 
     def trace_signal_dest_recursive(

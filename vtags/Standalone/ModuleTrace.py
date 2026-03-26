@@ -294,3 +294,97 @@ class ModuleTrace:
             list: 父实例列表，每项格式为 'father_module.inst_name'
         """
         return FileInfLib.get_father_inst_list(module_name)
+
+    def export_dependencies(self, module_name, depth=0, format="dot"):
+        """
+        导出模块依赖图
+
+        Args:
+            module_name: 模块名称
+            depth: 展开深度 (0=无限)
+            format: 导出格式 ('dot', 'json', 'mermaid')
+
+        Returns:
+            str: 导出的依赖图字符串
+        """
+        topo = self.get_topo(module_name, depth)
+
+        if format == "dot":
+            return self._export_dot(topo)
+        elif format == "json":
+            return self._export_json(topo)
+        elif format == "mermaid":
+            return self._export_mermaid(topo)
+        else:
+            raise ValueError(f"Unsupported format: {format}")
+
+    def _export_dot(self, topo):
+        """导出 DOT 格式"""
+        lines = [
+            "digraph module_deps {",
+            "    rankdir=TB;",
+            "    node [shape=box, style=filled, fillcolor=lightblue];",
+            "",
+        ]
+
+        nodes = []
+        edges = []
+
+        def collect_nodes_edges(node, parent=None):
+            mod = node.get("module", "")
+            file = node.get("file", "")
+            inst = node.get("instance", "")
+
+            filename = os.path.basename(file) if file else ""
+            label = f"{mod}\\n{filename}" if filename else mod
+            nodes.append((mod, f'    {mod} [label="{label}"];'))
+
+            if parent:
+                edge_label = inst if inst else ""
+                edges.append(f'    {parent} -> {mod} [label="{edge_label}"];')
+
+            for child in node.get("children", []):
+                collect_nodes_edges(child, mod)
+
+        collect_nodes_edges(topo)
+
+        seen_mods = set()
+        unique_nodes = []
+        for mod, node_line in nodes:
+            if mod not in seen_mods:
+                seen_mods.add(mod)
+                unique_nodes.append(node_line)
+
+        unique_edges = list(dict.fromkeys(edges))
+
+        lines.extend(unique_nodes)
+        lines.append("")
+        lines.extend(unique_edges)
+        lines.append("}")
+
+        return "\n".join(lines)
+
+    def _export_mermaid(self, topo):
+        """导出 Mermaid 格式"""
+        lines = ["graph TD"]
+
+        def collect_edges(node, parent=None):
+            mod = node.get("module", "")
+            inst = node.get("instance", "")
+
+            if parent:
+                label = f'["{inst}"]' if inst else ""
+                lines.append(f"    {parent} -->{label} {mod}")
+
+            for child in node.get("children", []):
+                collect_edges(child, mod)
+
+        collect_edges(topo)
+
+        return "\n".join(lines)
+
+    def _export_json(self, topo):
+        """导出 JSON 格式"""
+        import json
+
+        return json.dumps(topo, indent=2)

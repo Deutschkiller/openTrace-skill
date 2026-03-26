@@ -1,12 +1,12 @@
-# vtags-standalone
+# openTrace-skill
 
 Verilog HDL 代码导航工具，独立于 Vim。支持模块拓扑、模块追踪、信号追踪、模块搜索、VCD 波形分析等功能。
 
 ## 快速安装
 
 ```bash
-tar -xzf vtags-standalone.tar.gz
-cd vtags-standalone
+tar -xzf openTrace-skill.tar.gz
+cd openTrace-skill
 ./install.sh
 ```
 
@@ -14,7 +14,7 @@ cd vtags-standalone
 1. 提示输入 vtags 安装路径（默认 `~/vtags`）
 2. 复制 vtags 源码到目标路径
 3. 编译 C Parser（需要 gcc）
-4. 安装 OpenCode skill 到 `~/.config/opencode/skills/vtags-standalone/`
+4. 安装 OpenCode skill 到 `~/.config/opencode/skills/openTrace-skill/`
 
 ## 系统要求
 
@@ -32,7 +32,7 @@ cd vtags-standalone
 搜索所有包含 mng 的模块
 ```
 
-OpenCode 会自动加载 vtags-standalone skill 并执行相应命令。
+OpenCode 会自动加载 openTrace-skill 并执行相应命令。
 
 ## 命令行使用
 
@@ -172,7 +172,7 @@ python3 <vtags_path>/vtags.py -f design.f
 ## 目录结构
 
 ```
-vtags-standalone/
+openTrace-skill/
 ├── README.md          # 本文件
 ├── install.sh         # 安装脚本
 ├── skill/
@@ -193,7 +193,7 @@ vtags-standalone/
 
 ## VCD 波形分析功能
 
-vtags-standalone 支持 VCD 波形文件分析，结合信号追踪帮助定位问题。
+openTrace-skill 支持 VCD 波形文件分析，结合信号追踪帮助定位问题。
 
 ### 安装依赖
 

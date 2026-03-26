@@ -7,7 +7,7 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${BLUE}=== vtags-standalone 安装程序 ===${NC}\n"
+echo -e "${BLUE}=== openTrace-skill 安装程序 ===${NC}\n"
 
 DEFAULT_VTAGS_PATH="$HOME/vtags"
 echo -e "请输入 vtags 安装路径 [默认: $DEFAULT_VTAGS_PATH]:"
@@ -32,7 +32,7 @@ else
 fi
 
 echo -e "${BLUE}[3/5]${NC} 生成 skill 配置 ..."
-SKILL_DIR="$HOME/.config/opencode/skills/vtags-standalone"
+SKILL_DIR="$HOME/.config/opencode/skills/openTrace-skill"
 mkdir -p "$SKILL_DIR"
 
 sed "s|{{VTAGS_PATH}}|$VTAGS_PATH|g" "$VTAGS_DIR/skill/SKILL.md" > "$SKILL_DIR/SKILL.md"

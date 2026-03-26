@@ -110,18 +110,52 @@ def print_signal_trace(result, use_json=False):
     sure_list = result.get("sure", [])
     maybe_list = result.get("maybe", [])
 
+    has_conditions = any(item.get("condition") for item in sure_list + maybe_list)
+
     if sure_list:
         print(f"\nSure {trace_type}:")
         for item in sure_list:
             line_num = int(item["line"]) + 1 if item.get("line") is not None else 0
-            print(f"  {item['module']}{item['instance']} {item['file']}:{line_num}")
+            condition = item.get("condition")
+            branch_type = item.get("branch_type")
+
+            cond_str = ""
+            if condition:
+                if branch_type == "else":
+                    cond_str = " [else branch]"
+                elif branch_type == "ternary":
+                    cond_str = f" [ternary: {condition}]"
+                elif branch_type in ["case", "case_default"]:
+                    cond_str = f" [case: {condition}]"
+                else:
+                    cond_str = f" [condition: {condition}]"
+
+            print(
+                f"  {item['module']}{item['instance']} {item['file']}:{line_num}{cond_str}"
+            )
             print(f"    {item['code']}")
 
     if maybe_list:
         print(f"\nMaybe {trace_type}:")
         for item in maybe_list:
             line_num = int(item["line"]) + 1 if item.get("line") is not None else 0
-            print(f"  {item['module']}{item['instance']} {item['file']}:{line_num}")
+            condition = item.get("condition")
+            branch_type = item.get("branch_type")
+
+            cond_str = ""
+            if condition:
+                if branch_type == "else":
+                    cond_str = " [else branch]"
+                elif branch_type == "ternary":
+                    cond_str = f" [ternary: {condition}]"
+                elif branch_type in ["case", "case_default"]:
+                    cond_str = f" [case: {condition}]"
+                else:
+                    cond_str = f" [condition: {condition}]"
+
+            print(
+                f"  {item['module']}{item['instance']} {item['file']}:{line_num}{cond_str}"
+            )
             print(f"    {item['code']}")
 
     if not sure_list and not maybe_list:
@@ -416,6 +450,11 @@ Examples:
         default=None,
         help="Show full instance paths (default: 5)",
     )
+    parser_strace.add_argument(
+        "--show-conditions",
+        action="store_true",
+        help="Show assignment conditions in always blocks",
+    )
 
     parser_dtrace = subparsers.add_parser("dtrace", help="Trace signal destination")
     parser_dtrace.add_argument("signal", help="Signal name")
@@ -439,6 +478,11 @@ Examples:
         default=None,
         help="Show full instance paths (default: 5)",
     )
+    parser_dtrace.add_argument(
+        "--show-conditions",
+        action="store_true",
+        help="Show assignment conditions in always blocks",
+    )
 
     parser_vcd = subparsers.add_parser("vcd", help="Analyze VCD waveform file")
     parser_vcd.add_argument("vcd_file", help="VCD file path")
@@ -454,6 +498,26 @@ Examples:
     parser_vcd.add_argument(
         "--max-timeline", type=int, default=20, help="Max timeline entries to display"
     )
+
+    parser_export = subparsers.add_parser(
+        "export-deps", help="Export module dependencies"
+    )
+    parser_export.add_argument("module", help="Module name")
+    parser_export.add_argument(
+        "--format",
+        "-f",
+        choices=["dot", "json", "mermaid"],
+        default="dot",
+        help="Export format (default: dot)",
+    )
+    parser_export.add_argument(
+        "--depth",
+        "-d",
+        type=int,
+        default=0,
+        help="Depth to expand (0=unlimited, default: 0)",
+    )
+    parser_export.add_argument("-o", "--output", help="Output file (default: stdout)")
 
     args = parser.parse_args()
 
@@ -536,6 +600,7 @@ Examples:
                     print(m)
 
         elif args.command == "strace":
+            show_cond = getattr(args, "show_conditions", False)
             if args.full_path is not None:
                 result = api.get_signal_full_paths(
                     args.signal,
@@ -548,7 +613,7 @@ Examples:
                 print_full_paths(result, args.json)
             elif args.recursive == 1:
                 result = api.trace_signal_source(
-                    args.signal, args.file, args.line - 1, args.column
+                    args.signal, args.file, args.line - 1, args.column, show_cond
                 )
                 print_signal_trace(result, args.json)
             else:
@@ -559,6 +624,7 @@ Examples:
                 print_recursive_trace(result, args.json)
 
         elif args.command == "dtrace":
+            show_cond = getattr(args, "show_conditions", False)
             if args.full_path is not None:
                 result = api.get_signal_full_paths(
                     args.signal,
@@ -571,7 +637,7 @@ Examples:
                 print_full_paths(result, args.json)
             elif args.recursive == 1:
                 result = api.trace_signal_dest(
-                    args.signal, args.file, args.line - 1, args.column
+                    args.signal, args.file, args.line - 1, args.column, show_cond
                 )
                 print_signal_trace(result, args.json)
             else:
@@ -599,6 +665,15 @@ Examples:
             else:
                 result = api.list_vcd_signals(args.vcd_file, args.pattern)
                 print_vcd_list(result, args.json)
+
+        elif args.command == "export-deps":
+            result = api.export_dependencies(args.module, args.depth, args.format)
+            if args.output:
+                with open(args.output, "w") as f:
+                    f.write(result)
+                print(f"Dependencies exported to {args.output}")
+            else:
+                print(result)
 
         else:
             parser.print_help()

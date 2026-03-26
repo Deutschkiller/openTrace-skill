@@ -1,11 +1,11 @@
 ---
-name: vtags-standalone
+name: openTrace-skill
 description: Verilog HDL 代码导航工具，独立于 Vim。支持模块拓扑、信号追踪、模块搜索等功能。当用户需要分析 Verilog 代码、追踪信号、查看模块层级时调用。
 ---
 
-# vtags-standalone
+# openTrace-skill
 
-vtags-standalone 是一个独立于 Vim 的 Verilog 代码分析工具，提供模块拓扑、信号追踪、模块搜索等功能。
+openTrace-skill 是一个独立于 Vim 的 Verilog 代码分析工具，提供模块拓扑、信号追踪、模块搜索等功能。
 
 ## 安装路径
 

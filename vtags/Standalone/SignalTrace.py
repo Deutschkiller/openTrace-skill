@@ -27,7 +27,15 @@ class SignalTrace:
         if G:
             GLB.G = G
 
-    def trace(self, signal_name, file_path, line_num, column_num, trace_type):
+    def trace(
+        self,
+        signal_name,
+        file_path,
+        line_num,
+        column_num,
+        trace_type,
+        show_conditions=False,
+    ):
         """
         追踪信号
 
@@ -37,6 +45,7 @@ class SignalTrace:
             line_num: 行号 (0-indexed)
             column_num: 列号 (0-indexed)
             trace_type: 'source' 或 'dest'
+            show_conditions: 是否显示条件信息
 
         Returns:
             dict: 追踪结果
@@ -94,6 +103,7 @@ class SignalTrace:
             (line_num, column_num),
             module_io_inf.get("module_inf"),
             trace_type,
+            show_conditions,
         )
 
     def _trace_io_signal(
@@ -206,7 +216,9 @@ class SignalTrace:
 
         return result
 
-    def _trace_normal_signal(self, signal_name, file_path, pos, module_inf, trace_type):
+    def _trace_normal_signal(
+        self, signal_name, file_path, pos, module_inf, trace_type, show_conditions=False
+    ):
         """
         追踪模块内的普通信号
         """
@@ -339,7 +351,19 @@ class SignalTrace:
                 "code": appear_line.rstrip("\n"),
                 "module": cur_module_name,
                 "instance": submodule_and_subinstance,
+                "condition": None,
+                "branch_type": None,
+                "always_type": None,
             }
+
+            if show_conditions and (appear_is_source or appear_is_dest):
+                cond_info = self._extract_assignment_condition(
+                    appear_path, appear_pos[0], signal_name
+                )
+                if cond_info:
+                    trace_item["condition"] = cond_info.get("condition")
+                    trace_item["branch_type"] = cond_info.get("branch_type")
+                    trace_item["always_type"] = cond_info.get("always_type")
 
             if trace_type == "source":
                 if appear_dest_or_source:
@@ -1398,3 +1422,347 @@ class SignalTrace:
             pass
 
         return None
+
+    def _extract_assignment_condition(self, file_path, line_num, signal_name=None):
+        """
+        提取赋值语句的条件信息（支持 if/elsif/else, 嵌套if, case, 三目运算符）
+
+        Args:
+            file_path: 文件路径
+            line_num: 赋值语句行号 (0-indexed)
+            signal_name: 信号名（用于三目运算符匹配）
+
+        Returns:
+            dict: {
+                "condition": "swlist_vld && broadcast",
+                "branch_type": "if/elsif/else/case/case_default/ternary",
+                "always_type": "comb/seq/latch/assign",
+                "conditions": [...]  # 嵌套条件列表
+            } 或 None
+        """
+        try:
+            with open(file_path, "r") as f:
+                lines = f.readlines()
+        except Exception:
+            return None
+
+        if line_num >= len(lines):
+            return None
+
+        code_line = lines[line_num].strip()
+
+        # 1. 检查是否是 assign 语句（三目运算符）
+        if signal_name and re.search(r"\bassign\b", code_line):
+            ternary_info = self._extract_ternary_condition(code_line, signal_name)
+            if ternary_info:
+                ternary_info["always_type"] = "assign"
+                return ternary_info
+
+        # 2. 检查 case 语句
+        case_line = self._find_case_block(lines, line_num)
+        if case_line is not None:
+            case_info = self._parse_case_branches(lines, case_line, line_num)
+            if case_info:
+                always_info = self._find_always_block(lines, case_line)
+                case_info["always_type"] = always_info[1] if always_info else "comb"
+                return case_info
+
+        # 3. 检查 always 块（嵌套 if）
+        always_info = self._find_always_block(lines, line_num)
+        if always_info:
+            always_line, always_type = always_info
+            condition_info = self._parse_nested_conditions(lines, always_line, line_num)
+            if condition_info:
+                condition_info["always_type"] = always_type
+                return condition_info
+
+        return None
+
+    def _remove_comments(self, line):
+        """移除行内注释"""
+        # 移除 // 注释
+        line = re.sub(r"//.*$", "", line)
+        # 移除 /* */ 注释
+        line = re.sub(r"/\*.*?\*/", "", line)
+        return line.strip()
+
+    def _simplify_condition(self, condition):
+        """简化条件表达式"""
+        if not condition:
+            return condition
+
+        # 移除换行和多余空格
+        condition = re.sub(r"\s+", " ", condition.strip())
+
+        return condition
+
+    def _find_always_block(self, lines, line_num):
+        """
+        向上扫描找到 always 块
+
+        Returns:
+            tuple: (always_line, always_type) 或 None
+        """
+        always_patterns = [
+            (r"always\s*@\s*\(", "seq"),
+            (r"always_comb\b", "comb"),
+            (r"always_ff\s*@\s*\(", "seq"),
+            (r"always_latch\b", "latch"),
+        ]
+
+        for i in range(line_num, -1, -1):
+            line = lines[i].strip()
+            code = self._remove_comments(line)
+
+            if not code:
+                continue
+
+            for pattern, atype in always_patterns:
+                if re.search(pattern, code):
+                    return (i, atype)
+
+            if re.search(r"\b(module|function|task|assign)\b", code):
+                break
+
+        return None
+
+    def _find_case_block(self, lines, line_num):
+        """
+        向上扫描找到 case 块
+
+        Returns:
+            int: case 块起始行号，或 None
+        """
+        for i in range(line_num, -1, -1):
+            line = lines[i].strip()
+            code = self._remove_comments(line)
+
+            if re.search(r"\bcase\s*\(", code):
+                return i
+
+            if re.search(r"\b(always|module|function|task)\b", code):
+                break
+
+        return None
+
+    def _extract_ternary_condition(self, code_line, signal_name):
+        """
+        从三目运算符中提取条件
+        """
+        pattern = r"assign\s+" + re.escape(signal_name) + r"\s*=\s*(.+?)\s*\?"
+        match = re.search(pattern, code_line)
+
+        if not match:
+            return None
+
+        condition = match.group(1).strip()
+
+        ternary_pattern = (
+            r"assign\s+"
+            + re.escape(signal_name)
+            + r"\s*=\s*(.+?)\s*\?\s*(.+?)\s*:\s*(.+?)\s*;"
+        )
+        ternary_match = re.search(ternary_pattern, code_line)
+
+        if ternary_match:
+            return {
+                "condition": self._simplify_condition(condition),
+                "true_value": ternary_match.group(2).strip(),
+                "false_value": ternary_match.group(3).strip(),
+                "branch_type": "ternary",
+            }
+
+        return {
+            "condition": self._simplify_condition(condition),
+            "branch_type": "ternary",
+        }
+
+    def _parse_case_branches(self, lines, case_line, target_line):
+        """
+        解析 case 语句分支
+        """
+        case_match = re.search(r"case\s*\((.*?)\)\s*$", lines[case_line].strip())
+        if not case_match:
+            case_match = re.search(r"case\s*\((.*?)\)", lines[case_line].strip())
+
+        if not case_match:
+            return None
+
+        case_expr = case_match.group(1).strip()
+
+        i = case_line + 1
+        current_branch = None
+        branch_start = None
+        begin_count = 0
+        in_branch = False
+
+        while i < len(lines):
+            line = lines[i].strip()
+            code = self._remove_comments(line)
+
+            if re.search(r"\bendcase\b", code):
+                break
+
+            case_branch_match = re.search(r"(.*?)\s*:\s*begin\b", code)
+            if case_branch_match:
+                branch_value = case_branch_match.group(1).strip()
+                current_branch = branch_value
+                branch_start = i
+                begin_count = 1
+                in_branch = True
+            else:
+                default_match = re.search(r"default\s*:\s*begin\b", code)
+                if default_match:
+                    current_branch = "default"
+                    branch_start = i
+                    begin_count = 1
+                    in_branch = True
+
+            if in_branch:
+                begin_count += len(re.findall(r"\bbegin\b", code))
+                begin_count -= len(re.findall(r"\bend\b", code))
+
+                if begin_count <= 0:
+                    in_branch = False
+                    current_branch = None
+
+            if branch_start is not None and branch_start <= target_line <= i:
+                if current_branch:
+                    if current_branch == "default":
+                        return {
+                            "condition": f"{case_expr} == default",
+                            "branch_type": "case_default",
+                            "case_expr": case_expr,
+                        }
+                    else:
+                        return {
+                            "condition": f"{case_expr} == {current_branch}",
+                            "branch_type": "case",
+                            "case_expr": case_expr,
+                            "case_value": current_branch,
+                        }
+
+            i += 1
+
+        return None
+
+    def _parse_nested_conditions(self, lines, always_line, target_line):
+        """
+        解析嵌套 if 语句，返回完整条件路径
+        """
+        condition_stack = []
+        current_nest_level = 0
+
+        i = always_line
+        while i < len(lines):
+            line = lines[i].strip()
+            code = self._remove_comments(line)
+
+            if_match = re.search(r"if\s*\((.*?)\)\s*begin\b", code)
+            if if_match:
+                condition = self._simplify_condition(if_match.group(1))
+                condition_stack.append(
+                    {
+                        "condition": condition,
+                        "branch_type": "if",
+                        "nest_level": current_nest_level,
+                        "start_line": i,
+                    }
+                )
+                current_nest_level += 1
+
+            elsif_match = re.search(r"else\s+if\s*\((.*?)\)\s*begin\b", code)
+            if elsif_match:
+                while (
+                    condition_stack
+                    and condition_stack[-1].get("nest_level", 0) >= current_nest_level
+                ):
+                    condition_stack.pop()
+
+                condition = self._simplify_condition(elsif_match.group(1))
+                condition_stack.append(
+                    {
+                        "condition": condition,
+                        "branch_type": "elsif",
+                        "nest_level": current_nest_level - 1
+                        if current_nest_level > 0
+                        else 0,
+                        "start_line": i,
+                    }
+                )
+
+            elif re.search(r"else\s+begin\b", code):
+                while (
+                    condition_stack
+                    and condition_stack[-1].get("nest_level", 0) >= current_nest_level
+                ):
+                    condition_stack.pop()
+
+                condition_stack.append(
+                    {
+                        "condition": "else",
+                        "branch_type": "else",
+                        "nest_level": current_nest_level - 1
+                        if current_nest_level > 0
+                        else 0,
+                        "start_line": i,
+                    }
+                )
+
+            end_count = len(re.findall(r"\bend\b", code))
+            begin_count = len(re.findall(r"\bbegin\b", code))
+
+            net_end = end_count - begin_count
+            for _ in range(net_end):
+                if current_nest_level > 0:
+                    current_nest_level -= 1
+
+            if i == target_line:
+                return self._build_nested_condition(condition_stack)
+
+            i += 1
+
+        return None
+
+    def _build_nested_condition(self, condition_stack):
+        """
+        从条件栈构建完整条件路径
+        """
+        if not condition_stack:
+            return None
+
+        valid_conditions = []
+        for cond in condition_stack:
+            btype = cond.get("branch_type", "if")
+            condition = cond.get("condition", "")
+            level = cond.get("nest_level", 0)
+
+            if btype == "else":
+                valid_conditions = [c for c in valid_conditions if c[2] < level]
+                valid_conditions.append((condition, btype, level))
+            else:
+                valid_conditions = [c for c in valid_conditions if c[2] < level]
+                valid_conditions.append((condition, btype, level))
+
+        condition_parts = []
+        branch_type = "if"
+
+        for cond, btype, level in valid_conditions:
+            if cond != "else":
+                condition_parts.append(cond)
+            branch_type = btype
+
+        full_condition = " && ".join(condition_parts) if condition_parts else "else"
+
+        if full_condition == "else":
+            return {
+                "condition": "else",
+                "branch_type": "else",
+                "conditions": [],
+            }
+
+        return {
+            "condition": full_condition,
+            "branch_type": branch_type,
+            "conditions": [(c, t) for c, t, l in valid_conditions if c != "else"],
+        }
