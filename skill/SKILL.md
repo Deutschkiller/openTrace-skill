@@ -98,12 +98,13 @@ python3 {{VTAGS_PATH}}/Standalone/cli.py -db ./vtags.db search "*_top"
 
 ### strace - 信号源追踪
 ```bash
-python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> strace <signal> <file> <line> [column]
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> strace <signal> <file> <line> [column] [-r depth]
 ```
 - `signal`: 信号名称
 - `file`: 文件路径
 - `line`: 行号 (从 1 开始)
 - `column`: 列号 (从 0 开始，可选)
+- `-r depth`: 递归追踪深度 (0=无限, 1=单跳, 默认=1)
 
 输出示例：
 ```
@@ -117,10 +118,35 @@ Sure source:
         input wire i_clk, // 250MHz
 ```
 
+递归追踪示例：
+```bash
+# 递归追踪 5 层深度
+python3 {{VTAGS_PATH}}/Standalone/cli.py strace w_tx1_req rtl/top.v 100 -r 5
+
+# 输出示例:
+============================================================
+Signal: w_tx1_req
+Trace Type: source (recursive, max_depth=5)
+============================================================
+
+Chain (4 levels):
+  [0] w_tx1_req (rtl/top.v:100)
+        wire w_tx1_req;
+  [1] ← o_tx1_req (rtl/mng.v:2669) [sure]
+        .o_tx1_req(w_tx1_req),
+  [2] ← w_tx_1_port_vld (rtl/swlist.v:123) [sure]
+        assign w_tx_1_port_vld = i_tx_1_port_vld;
+  [3] ← 1'b1 (CONSTANT) [TERMINAL - CONSTANT_BINARY]
+        assign i_tx_1_port_vld = 1'b1;
+
+Terminated: binary constant assignment
+```
+
 ### dtrace - 信号目的地追踪
 ```bash
-python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> dtrace <signal> <file> <line> [column]
+python3 {{VTAGS_PATH}}/Standalone/cli.py -db <db_path> dtrace <signal> <file> <line> [column] [-r depth]
 ```
+- 参数同 strace
 
 输出示例：
 ```

@@ -58,11 +58,17 @@ python3 <vtags_path>/Standalone/cli.py files <module>
 # 搜索模块 (支持 * 和 ? 通配符)
 python3 <vtags_path>/Standalone/cli.py search "*pattern*"
 
-# 追踪信号源
+# 追踪信号源 (单跳)
 python3 <vtags_path>/Standalone/cli.py strace <signal> <file> <line>
 
-# 追踪信号目的地
+# 递归追踪信号源 (自动追踪多层)
+python3 <vtags_path>/Standalone/cli.py strace <signal> <file> <line> -r 5
+
+# 追踪信号目的地 (单跳)
 python3 <vtags_path>/Standalone/cli.py dtrace <signal> <file> <line>
+
+# 递归追踪信号目的地
+python3 <vtags_path>/Standalone/cli.py dtrace <signal> <file> <line> -r 0
 
 # JSON 格式输出 (方便程序解析)
 python3 <vtags_path>/Standalone/cli.py -j info <module>
@@ -82,6 +88,66 @@ python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req --fil
 
 # JSON 格式输出
 python3 <vtags_path>/Standalone/cli.py vcd waveform.vcd --signal w_tx1_req -j
+```
+
+## 递归追踪功能
+
+递归追踪可以自动追踪信号的完整传播链，无需手动多次调用。
+
+### 使用方法
+
+```bash
+# 单跳追踪 (默认，保持兼容)
+python3 <vtags_path>/Standalone/cli.py strace w_tx1_req rtl/top.v 100
+
+# 递归追踪 5 层深度
+python3 <vtags_path>/Standalone/cli.py strace w_tx1_req rtl/top.v 100 -r 5
+
+# 无限追踪 (直到终止条件)
+python3 <vtags_path>/Standalone/cli.py strace w_tx1_req rtl/top.v 100 -r 0
+```
+
+### 输出示例
+
+```
+============================================================
+Signal: w_tx1_req
+Trace Type: source (recursive, max_depth=5)
+============================================================
+
+Chain (4 levels):
+  [0] w_tx1_req (rtl/top.v:100)
+        wire w_tx1_req;
+  [1] ← o_tx1_req (rtl/mng.v:2669) [sure]
+        .o_tx1_req(w_tx1_req),
+  [2] ← w_tx_1_port_vld (rtl/swlist.v:123) [sure]
+        assign w_tx_1_port_vld = i_tx_1_port_vld;
+  [3] ← 1'b1 (CONSTANT) [TERMINAL - CONSTANT_BINARY]
+        assign i_tx_1_port_vld = 1'b1;
+
+Terminated: binary constant assignment
+```
+
+### 终止条件
+
+递归追踪会在以下情况终止：
+
+| 终止类型 | 说明 |
+|---------|------|
+| 常量赋值 | 信号被赋值为常量 (如 `1'b0`, `8'hFF`) |
+| 顶层端口 | 到达顶层模块的 input/output 端口 |
+| 宏定义 | 信号来自 `define 宏定义 |
+| 循环引用 | 检测到信号循环依赖，输出警告 |
+| 最大深度 | 达到指定的最大追踪深度 |
+
+### 循环引用检测
+
+当检测到循环引用时，会输出警告：
+
+```
+⚠️  CIRCULAR REFERENCE DETECTED:
+  Path: w_signal_a → w_signal_b → w_signal_c → w_signal_a
+  Cannot trace further to avoid infinite loop
 ```
 
 ## 生成 vtags.db 数据库

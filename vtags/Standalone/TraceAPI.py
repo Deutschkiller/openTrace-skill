@@ -176,6 +176,34 @@ class TraceAPI:
             signal_name, file_path, line_num, column_num, "source"
         )
 
+    def trace_signal_source_recursive(
+        self, signal_name, file_path, line_num, column_num=0, max_depth=5
+    ):
+        """
+        递归追踪信号源
+
+        Args:
+            signal_name: 信号名称
+            file_path: 文件路径
+            line_num: 行号 (0-indexed)
+            column_num: 列号 (0-indexed, 可选)
+            max_depth: 最大追踪深度 (0=无限, 默认5)
+
+        Returns:
+            dict: 递归追踪结果:
+                - signal_name: 原始信号名
+                - trace_type: 'source'
+                - max_depth: 最大深度
+                - chain: 主追踪链列表
+                - maybe_branches: 可能的分支列表
+                - terminated_reason: 终止原因
+                - circular_path: 循环路径 (如果有)
+        """
+        self._init_db()
+        return self._signal_trace.trace_recursive(
+            signal_name, file_path, line_num, column_num, "source", max_depth
+        )
+
     def trace_signal_dest(self, signal_name, file_path, line_num, column_num=0):
         """
         追踪信号目的地
@@ -196,6 +224,34 @@ class TraceAPI:
         self._init_db()
         return self._signal_trace.trace(
             signal_name, file_path, line_num, column_num, "dest"
+        )
+
+    def trace_signal_dest_recursive(
+        self, signal_name, file_path, line_num, column_num=0, max_depth=5
+    ):
+        """
+        递归追踪信号目的地
+
+        Args:
+            signal_name: 信号名称
+            file_path: 文件路径
+            line_num: 行号 (0-indexed)
+            column_num: 列号 (0-indexed, 可选)
+            max_depth: 最大追踪深度 (0=无限, 默认5)
+
+        Returns:
+            dict: 递归追踪结果:
+                - signal_name: 原始信号名
+                - trace_type: 'dest'
+                - max_depth: 最大深度
+                - chain: 主追踪链列表
+                - maybe_branches: 可能的分支列表
+                - terminated_reason: 终止原因
+                - circular_path: 循环路径 (如果有)
+        """
+        self._init_db()
+        return self._signal_trace.trace_recursive(
+            signal_name, file_path, line_num, column_num, "dest", max_depth
         )
 
     def get_module_info(self, module_name):

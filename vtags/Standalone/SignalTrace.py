@@ -6,6 +6,7 @@
 import os
 import re
 import copy
+import Lib.GLB as GLB
 import Lib.FileInfLib as FileInfLib
 from Lib.BaseLib import search_verilog_code_use_grep, get_valid_code, get_sec_mtime
 
@@ -23,6 +24,8 @@ class SignalTrace:
             G: 全局状态字典
         """
         self._G = G
+        if G:
+            GLB.G = G
 
     def trace(self, signal_name, file_path, line_num, column_num, trace_type):
         """
@@ -593,3 +596,664 @@ class SignalTrace:
         )
 
         return result
+
+    def trace_recursive(
+        self, signal_name, file_path, line_num, column_num, trace_type, max_depth=5
+    ):
+        """
+        递归追踪信号
+
+        Args:
+            signal_name: 信号名称
+            file_path: 文件路径
+            line_num: 行号 (0-indexed)
+            column_num: 列号 (0-indexed)
+            trace_type: 'source' 或 'dest'
+            max_depth: 最大追踪深度 (0=无限)
+
+        Returns:
+            dict: {
+                "signal_name": "原始信号名",
+                "trace_type": "source/dest",
+                "max_depth": 最大深度,
+                "chain": [主追踪链],
+                "maybe_branches": [可能的分支],
+                "terminated_reason": "终止原因",
+                "circular_path": "循环路径" 或 None
+            }
+        """
+        result = {
+            "signal_name": signal_name,
+            "trace_type": trace_type,
+            "max_depth": max_depth if max_depth > 0 else 999,
+            "chain": [],
+            "maybe_branches": [],
+            "terminated_reason": None,
+            "circular_path": None,
+        }
+
+        visited = set()
+        self._trace_recursive_impl(
+            signal_name,
+            file_path,
+            line_num,
+            column_num,
+            trace_type,
+            max_depth if max_depth > 0 else 999,
+            0,
+            visited,
+            result,
+            [],
+        )
+
+        return result
+
+    def _trace_recursive_impl(
+        self,
+        signal_name,
+        file_path,
+        line_num,
+        column_num,
+        trace_type,
+        max_depth,
+        current_depth,
+        visited,
+        result,
+        path_stack,
+    ):
+        """
+        递归追踪实现
+
+        Args:
+            signal_name: 信号名称
+            file_path: 文件路径
+            line_num: 行号
+            column_num: 列号
+            trace_type: 追踪类型
+            max_depth: 最大深度
+            current_depth: 当前深度
+            visited: 已访问信号集合
+            result: 结果字典
+            path_stack: 路径栈（用于循环检测）
+        """
+        visit_key = (signal_name, file_path, line_num)
+
+        if visit_key in visited:
+            result["terminated_reason"] = "circular"
+            circular_path = " → ".join(path_stack + [signal_name])
+            result["circular_path"] = circular_path
+            return
+
+        visited.add(visit_key)
+        path_stack.append(signal_name)
+
+        # 先检查是否是端口定义行（顶层端口检测）
+        code_line = self._read_file_line(file_path, line_num)
+        if code_line:
+            port_match = re.search(r"^\s*(input|output|inout)\s+", code_line)
+            if port_match:
+                # 这是端口定义行，检查模块是否有父模块
+                try:
+                    module_io_inf = FileInfLib.get_module_inf_from_pos(
+                        file_path, (line_num, 0)
+                    )
+                    if module_io_inf:
+                        module_inf = module_io_inf.get("module_inf", {})
+                        module_name = module_inf.get("module_name_sr", {}).get("str")
+                        if module_name:
+                            try:
+                                father_list = FileInfLib.get_father_inst_list(
+                                    module_name
+                                )
+                            except (KeyError, Exception):
+                                father_list = None
+
+                            if not father_list:
+                                # 没有父模块，这是顶层端口
+                                port_type = port_match.group(1)
+                                chain_item = {
+                                    "signal_name": signal_name,
+                                    "file": file_path,
+                                    "line": line_num,
+                                    "column": column_num,
+                                    "code": code_line.strip(),
+                                    "module": module_name,
+                                    "instance": "",
+                                    "depth": current_depth,
+                                    "is_final": True,
+                                    "match_type": "port",
+                                    "terminal_type": f"top_{port_type}",
+                                }
+                                result["chain"].append(chain_item)
+                                result["terminated_reason"] = f"top_{port_type}"
+                                path_stack.pop()
+                                return
+                except (KeyError, Exception):
+                    pass
+
+        trace_result = self.trace(
+            signal_name, file_path, line_num, column_num, trace_type
+        )
+
+        sure_list = trace_result.get("sure", [])
+        maybe_list = trace_result.get("maybe", [])
+
+        if not sure_list and not maybe_list:
+            fallback_item = self._fallback_trace_in_parent(
+                signal_name, file_path, line_num, trace_type
+            )
+
+            if fallback_item:
+                chain_item = {
+                    "signal_name": signal_name,
+                    "file": fallback_item["file"],
+                    "line": fallback_item["line"],
+                    "column": fallback_item.get("column", 0),
+                    "code": fallback_item["code"],
+                    "module": fallback_item["module"],
+                    "instance": fallback_item["instance"],
+                    "depth": current_depth,
+                    "is_final": False,
+                    "match_type": "fallback",
+                    "terminal_type": None,
+                }
+
+                is_terminal, terminal_type = self._is_terminal_node(
+                    fallback_item, trace_type
+                )
+                chain_item["is_final"] = is_terminal
+                chain_item["terminal_type"] = terminal_type
+
+                result["chain"].append(chain_item)
+
+                if is_terminal:
+                    result["terminated_reason"] = terminal_type
+                elif current_depth + 1 < max_depth:
+                    next_signal = fallback_item.get("connected_signal")
+                    if next_signal:
+                        # 即使 next_signal == signal_name 也要继续递归
+                        # 因为它们在不同的文件/模块中
+                        visit_key = (
+                            next_signal,
+                            fallback_item["file"],
+                            fallback_item["line"],
+                        )
+                        if visit_key not in visited:
+                            actual_pos = self._find_signal_position(
+                                next_signal,
+                                fallback_item["file"],
+                                fallback_item.get("module"),
+                            )
+                            if actual_pos:
+                                self._trace_recursive_impl(
+                                    next_signal,
+                                    fallback_item["file"],
+                                    actual_pos["line"],
+                                    actual_pos.get("column", 0),
+                                    trace_type,
+                                    max_depth,
+                                    current_depth + 1,
+                                    visited.copy(),
+                                    result,
+                                    path_stack.copy(),
+                                )
+                            else:
+                                self._trace_recursive_impl(
+                                    next_signal,
+                                    fallback_item["file"],
+                                    fallback_item["line"],
+                                    0,
+                                    trace_type,
+                                    max_depth,
+                                    current_depth + 1,
+                                    visited.copy(),
+                                    result,
+                                    path_stack.copy(),
+                                )
+
+                path_stack.pop()
+                return
+
+            if current_depth == 0:
+                result["terminated_reason"] = "no_source"
+            path_stack.pop()
+            return
+
+        for idx, item in enumerate(sure_list):
+            chain_item = {
+                "signal_name": signal_name,
+                "file": item.get("file", ""),
+                "line": item.get("line", 0),
+                "column": item.get("column", 0),
+                "code": item.get("code", ""),
+                "module": item.get("module", ""),
+                "instance": item.get("instance", ""),
+                "depth": current_depth,
+                "is_final": False,
+                "match_type": "sure",
+                "terminal_type": None,
+            }
+
+            is_terminal, terminal_type = self._is_terminal_node(item, trace_type)
+            chain_item["is_final"] = is_terminal
+            chain_item["terminal_type"] = terminal_type
+
+            if idx == 0:
+                result["chain"].append(chain_item)
+            else:
+                result["maybe_branches"].append(
+                    {"from_depth": current_depth, "chain": [chain_item]}
+                )
+
+            if is_terminal:
+                if not result["terminated_reason"]:
+                    result["terminated_reason"] = terminal_type
+            elif current_depth + 1 < max_depth:
+                next_signal = self._extract_next_signal(item, trace_type)
+                if next_signal and next_signal != signal_name:
+                    actual_pos = self._find_signal_position(
+                        next_signal, item["file"], item.get("module")
+                    )
+                    if actual_pos:
+                        self._trace_recursive_impl(
+                            next_signal,
+                            item["file"],
+                            actual_pos["line"],
+                            actual_pos["column"],
+                            trace_type,
+                            max_depth,
+                            current_depth + 1,
+                            visited.copy(),
+                            result,
+                            path_stack.copy(),
+                        )
+                    else:
+                        self._trace_recursive_impl(
+                            next_signal,
+                            item["file"],
+                            item["line"],
+                            item["column"],
+                            trace_type,
+                            max_depth,
+                            current_depth + 1,
+                            visited.copy(),
+                            result,
+                            path_stack.copy(),
+                        )
+
+        for item in maybe_list:
+            chain_item = {
+                "signal_name": signal_name,
+                "file": item.get("file", ""),
+                "line": item.get("line", 0),
+                "column": item.get("column", 0),
+                "code": item.get("code", ""),
+                "module": item.get("module", ""),
+                "instance": item.get("instance", ""),
+                "depth": current_depth,
+                "is_final": False,
+                "match_type": "maybe",
+                "terminal_type": None,
+            }
+
+            is_terminal, terminal_type = self._is_terminal_node(item, trace_type)
+            chain_item["is_final"] = is_terminal
+            chain_item["terminal_type"] = terminal_type
+
+            result["maybe_branches"].append(
+                {"from_depth": current_depth, "chain": [chain_item]}
+            )
+
+            if not is_terminal and current_depth + 1 < max_depth:
+                next_signal = self._extract_next_signal(item, trace_type)
+                if next_signal and next_signal != signal_name:
+                    actual_pos = self._find_signal_position(
+                        next_signal, item["file"], item.get("module")
+                    )
+                    if actual_pos:
+                        self._trace_recursive_impl(
+                            next_signal,
+                            item["file"],
+                            actual_pos["line"],
+                            actual_pos["column"],
+                            trace_type,
+                            max_depth,
+                            current_depth + 1,
+                            visited.copy(),
+                            result,
+                            path_stack.copy(),
+                        )
+                    else:
+                        self._trace_recursive_impl(
+                            next_signal,
+                            item["file"],
+                            item["line"],
+                            item["column"],
+                            trace_type,
+                            max_depth,
+                            current_depth + 1,
+                            visited.copy(),
+                            result,
+                            path_stack.copy(),
+                        )
+
+        if not result["terminated_reason"]:
+            if current_depth + 1 >= max_depth:
+                result["terminated_reason"] = "max_depth"
+            else:
+                result["terminated_reason"] = "no_source"
+
+        path_stack.pop()
+
+    def _is_terminal_node(self, trace_item, trace_type):
+        """
+        判断是否为终止节点
+
+        Args:
+            trace_item: 追踪项
+            trace_type: 追踪类型
+
+        Returns:
+            tuple: (is_terminal, terminal_type)
+        """
+        code = trace_item.get("code", "")
+        module = trace_item.get("module", "")
+        instance = trace_item.get("instance", "")
+
+        is_const, const_type = self._is_constant_assignment(code)
+        if is_const:
+            return True, const_type
+
+        is_top, top_type = self._is_top_level_port(trace_item, trace_type)
+        if is_top:
+            return True, top_type
+
+        is_macro = self._is_macro_definition(code)
+        if is_macro:
+            return True, "macro"
+
+        return False, None
+
+    def _is_constant_assignment(self, code):
+        """
+        判断是否为常量赋值
+
+        Args:
+            code: 代码行
+
+        Returns:
+            tuple: (is_constant, constant_type)
+        """
+        if not code:
+            return False, None
+
+        patterns = [
+            (r"=\s*(1'b[01xXzZ_]+)", "constant_binary"),
+            (r"=\s*(2'b[01xXzZ_]+)", "constant_binary"),
+            (r"=\s*(4'b[01xXzZ_]+)", "constant_binary"),
+            (r"=\s*(8'b[01xXzZ_]+)", "constant_binary"),
+            (r"=\s*(\d+'b[01xXzZ_]+)", "constant_binary"),
+            (r"=\s*(\d+'h[0-9a-fA-FxXzZ_]+)", "constant_hex"),
+            (r"=\s*(\d+'d[0-9xXzZ_]+)", "constant_decimal"),
+            (r"=\s*(\d+'o[0-7xXzZ_]+)", "constant_octal"),
+            (r"=\s*(1'o[01xXzZ])", "constant_octal"),
+            (r"=\s*(\d+)\s*;", "constant_decimal"),
+            (r"=\s*(\d+)\s*,", "constant_decimal"),
+            (r"=\s*(\d+)\s*\)", "constant_decimal"),
+            (r"=\s*0\s*;", "constant_zero"),
+            (r"=\s*1\s*;", "constant_one"),
+        ]
+
+        for pattern, const_type in patterns:
+            if re.search(pattern, code):
+                return True, const_type
+
+        return False, None
+
+    def _is_top_level_port(self, trace_item, trace_type):
+        """
+        判断是否为顶层模块端口
+
+        Args:
+            trace_item: 追踪项
+            trace_type: 追踪类型
+
+        Returns:
+            tuple: (is_top_port, port_type)
+        """
+        module = trace_item.get("module", "")
+        instance = trace_item.get("instance", "")
+
+        if not module:
+            return False, None
+
+        try:
+            father_inst_list = FileInfLib.get_father_inst_list(module)
+        except (KeyError, Exception):
+            father_inst_list = None
+
+        if not father_inst_list:
+            code = trace_item.get("code", "")
+            if re.search(r"^\s*(input|output)\s+", code):
+                if trace_type == "source":
+                    return True, "top_input"
+                else:
+                    return True, "top_output"
+
+        return False, None
+
+    def _is_macro_definition(self, code):
+        """
+        判断是否为宏定义
+
+        Args:
+            code: 代码行
+
+        Returns:
+            bool: 是否为宏定义
+        """
+        if not code:
+            return False
+
+        if re.search(r"^\s*`define\s+", code):
+            return True
+
+        if re.search(r"`\w+", code):
+            return True
+
+        return False
+
+    def _extract_next_signal(self, trace_item, trace_type):
+        """
+        从追踪结果中提取下一级信号名
+
+        Args:
+            trace_item: 追踪项
+            trace_type: 追踪类型
+
+        Returns:
+            str: 下一级信号名，或 None
+        """
+        code = trace_item.get("code", "")
+        instance = trace_item.get("instance", "")
+
+        if instance and ":" in instance:
+            match = re.search(r"[\.:]\s*(\w+)\s*\(", code)
+            if match:
+                return match.group(1)
+
+        if trace_type == "source":
+            assign_match = re.search(r"=\s*(\w+)\s*[;,]", code)
+            if assign_match:
+                return assign_match.group(1)
+
+            assign_match2 = re.search(r"assign\s+\w+\s*=\s*(\w+)", code)
+            if assign_match2:
+                return assign_match2.group(1)
+
+            bit_match = re.search(r"=\s*(\w+)\s*\[", code)
+            if bit_match:
+                return bit_match.group(1)
+
+            concat_match = re.search(r"=\s*\{\s*(\w+)", code)
+            if concat_match:
+                return concat_match.group(1)
+
+            ternary_match = re.search(r"=\s*(\w+)\s*\?", code)
+            if ternary_match:
+                return ternary_match.group(1)
+
+            port_match = re.search(r"\.\s*(\w+)\s*\(\s*(\w+)", code)
+            if port_match:
+                return port_match.group(2)
+
+        else:
+            port_match = re.search(r"\.\s*(\w+)\s*\(", code)
+            if port_match:
+                return port_match.group(1)
+
+        return None
+
+    def _find_signal_position(self, signal_name, file_path, module_name=None):
+        """
+        在目标文件中搜索信号的实际位置
+
+        Args:
+            signal_name: 信号名称
+            file_path: 文件路径
+            module_name: 模块名 (可选，用于限定搜索范围)
+
+        Returns:
+            dict: {"line": 行号, "column": 列号, "code": 代码行} 或 None
+        """
+        if not os.path.isfile(file_path):
+            return None
+
+        signal_appear_pos_line = search_verilog_code_use_grep(
+            signal_name, file_path, (0, 999999)
+        )
+
+        if not signal_appear_pos_line:
+            return None
+
+        for appear_path, appear_pos, appear_line in signal_appear_pos_line:
+            valid_code = get_valid_code(appear_line)
+
+            if re.search(r"(\W|^)(input|output|inout)(\W)", valid_code):
+                continue
+
+            module_io_inf = FileInfLib.get_module_io_inf_from_pos(
+                appear_path, appear_pos
+            )
+            io_inf = module_io_inf.get("io_inf")
+
+            if io_inf:
+                return {
+                    "line": appear_pos[0],
+                    "column": appear_pos[1],
+                    "code": appear_line,
+                    "is_io": True,
+                }
+
+            code_line, new_y = self._get_code_logic_full_line(
+                appear_path, appear_pos, []
+            )
+            dest_or_source = self._current_appear_is_dest_or_source(
+                signal_name, (code_line, new_y)
+            )
+
+            if dest_or_source in ["source", "dest"]:
+                return {
+                    "line": appear_pos[0],
+                    "column": appear_pos[1],
+                    "code": appear_line,
+                    "is_io": False,
+                }
+
+        if signal_appear_pos_line:
+            appear_path, appear_pos, appear_line = signal_appear_pos_line[0]
+            return {
+                "line": appear_pos[0],
+                "column": appear_pos[1],
+                "code": appear_line,
+                "is_io": False,
+            }
+
+        return None
+
+    def _fallback_trace_in_parent(self, signal_name, file_path, line_num, trace_type):
+        """
+        当正常追踪失败时，尝试在父模块实例化处搜索信号连接
+
+        场景: 信号是模块的 input/output 端口，但由于 ifdef 等原因未被数据库识别
+
+        Args:
+            signal_name: 信号名
+            file_path: 文件路径
+            line_num: 行号 (0-indexed)
+            trace_type: 'source' 或 'dest'
+
+        Returns:
+            dict: 追踪结果项，或 None
+        """
+        try:
+            module_io_inf = FileInfLib.get_module_inf_from_pos(file_path, (line_num, 0))
+            if not module_io_inf:
+                module_io_inf = FileInfLib.get_module_inf_from_pos(file_path, (0, 0))
+
+            if module_io_inf:
+                module_inf = module_io_inf.get("module_inf", {})
+            else:
+                module_inf = None
+
+            if not module_inf:
+                return None
+
+            module_name = module_inf.get("module_name_sr", {}).get("str")
+            if not module_name:
+                return None
+
+            father_list = FileInfLib.get_father_inst_list(module_name)
+            if not father_list:
+                return None
+
+            for father_inst in father_list[:1]:
+                parts = father_inst.split(".")
+                if len(parts) != 2:
+                    continue
+
+                father_module, inst_name = parts
+
+                father_module_inf = FileInfLib.get_module_inf(father_module)
+                if not father_module_inf:
+                    continue
+
+                father_file = father_module_inf.get("file_path", "")
+                if not father_file:
+                    continue
+
+                try:
+                    with open(father_file, "r", errors="ignore") as f:
+                        lines = f.readlines()
+                except:
+                    continue
+
+                for line_idx, line in enumerate(lines):
+                    pattern = rf"\.\s*{re.escape(signal_name)}\s*\(\s*(\w+)"
+                    match = re.search(pattern, line)
+                    if match:
+                        connected_signal = match.group(1)
+                        return {
+                            "file": father_file,
+                            "line": line_idx,
+                            "column": 0,
+                            "code": line.strip(),
+                            "module": father_module,
+                            "instance": inst_name,
+                            "connected_signal": connected_signal,
+                        }
+
+        except Exception:
+            pass
+
+        return None

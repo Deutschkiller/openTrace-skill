@@ -128,6 +128,98 @@ def print_signal_trace(result, use_json=False):
         print(f"\nNo {trace_type} found.")
 
 
+def print_recursive_trace(result, use_json=False):
+    """打印递归追踪结果"""
+    if use_json:
+        print(json.dumps(result, indent=2))
+        return
+
+    signal_name = result.get("signal_name", "")
+    trace_type = result.get("trace_type", "")
+    max_depth = result.get("max_depth", 0)
+    chain = result.get("chain", [])
+    maybe_branches = result.get("maybe_branches", [])
+    terminated_reason = result.get("terminated_reason", "")
+    circular_path = result.get("circular_path")
+
+    print(f"\n{'=' * 60}")
+    print(f"Signal: {signal_name}")
+    print(f"Trace Type: {trace_type} (recursive, max_depth={max_depth})")
+    print(f"{'=' * 60}")
+
+    if circular_path:
+        print(f"\n⚠️  CIRCULAR REFERENCE DETECTED:")
+        print(f"  Path: {circular_path}")
+        print(f"  Cannot trace further to avoid infinite loop")
+
+    if chain:
+        print(f"\nChain ({len(chain)} levels):")
+        for item in chain:
+            depth = item.get("depth", 0)
+            sig_name = item.get("signal_name", "")
+            file_path = item.get("file", "")
+            line_num = int(item.get("line", 0)) + 1
+            code = item.get("code", "").strip()
+            module = item.get("module", "")
+            instance = item.get("instance", "")
+            match_type = item.get("match_type", "")
+            is_final = item.get("is_final", False)
+            terminal_type = item.get("terminal_type")
+
+            indent = "  " * (depth + 1)
+            arrow = "← " if depth > 0 else ""
+
+            location = f"{file_path}:{line_num}" if file_path else "N/A"
+            match_str = f" [{match_type}]" if match_type else ""
+            terminal_str = f" [TERMINAL - {terminal_type.upper()}]" if is_final else ""
+
+            print(
+                f"{indent}[{depth}] {arrow}{sig_name} ({location}){match_str}{terminal_str}"
+            )
+            if code:
+                print(f"{indent}      {code[:80]}")
+
+    if maybe_branches:
+        print(f"\nMaybe branches:")
+        for branch in maybe_branches:
+            from_depth = branch.get("from_depth", 0)
+            branch_chain = branch.get("chain", [])
+            for item in branch_chain:
+                depth = item.get("depth", 0)
+                sig_name = item.get("signal_name", "")
+                file_path = item.get("file", "")
+                line_num = int(item.get("line", 0)) + 1
+                code = item.get("code", "").strip()
+
+                indent = "  " * (depth + 1)
+                print(
+                    f"{indent}[{depth}.{from_depth}] ← {sig_name} ({file_path}:{line_num}) [maybe]"
+                )
+                if code:
+                    print(f"{indent}        {code[:80]}")
+
+    if terminated_reason:
+        reason_map = {
+            "constant": "constant assignment",
+            "constant_binary": "binary constant assignment",
+            "constant_hex": "hex constant assignment",
+            "constant_decimal": "decimal constant assignment",
+            "constant_zero": "constant zero",
+            "constant_one": "constant one",
+            "top_input": "top-level input port",
+            "top_output": "top-level output port",
+            "macro": "macro definition",
+            "max_depth": "reached max depth",
+            "no_source": "no source found",
+            "circular": "circular reference",
+        }
+        reason_str = reason_map.get(terminated_reason, terminated_reason)
+        print(f"\nTerminated: {reason_str}")
+
+    if not chain and not maybe_branches:
+        print(f"\nNo trace found.")
+
+
 def print_vcd_list(signals, use_json=False):
     """打印 VCD 信号列表"""
     if use_json:
@@ -259,6 +351,13 @@ Examples:
     parser_strace.add_argument(
         "column", nargs="?", type=int, default=0, help="Column number (0-indexed)"
     )
+    parser_strace.add_argument(
+        "-r",
+        "--recursive",
+        type=int,
+        default=1,
+        help="Recursive trace depth (0=unlimited, 1=single hop, default=1)",
+    )
 
     parser_dtrace = subparsers.add_parser("dtrace", help="Trace signal destination")
     parser_dtrace.add_argument("signal", help="Signal name")
@@ -266,6 +365,13 @@ Examples:
     parser_dtrace.add_argument("line", type=int, help="Line number (1-indexed)")
     parser_dtrace.add_argument(
         "column", nargs="?", type=int, default=0, help="Column number (0-indexed)"
+    )
+    parser_dtrace.add_argument(
+        "-r",
+        "--recursive",
+        type=int,
+        default=1,
+        help="Recursive trace depth (0=unlimited, 1=single hop, default=1)",
     )
 
     parser_vcd = subparsers.add_parser("vcd", help="Analyze VCD waveform file")
@@ -364,16 +470,30 @@ Examples:
                     print(m)
 
         elif args.command == "strace":
-            result = api.trace_signal_source(
-                args.signal, args.file, args.line - 1, args.column
-            )
-            print_signal_trace(result, args.json)
+            if args.recursive == 1:
+                result = api.trace_signal_source(
+                    args.signal, args.file, args.line - 1, args.column
+                )
+                print_signal_trace(result, args.json)
+            else:
+                max_depth = args.recursive if args.recursive > 0 else 999
+                result = api.trace_signal_source_recursive(
+                    args.signal, args.file, args.line - 1, args.column, max_depth
+                )
+                print_recursive_trace(result, args.json)
 
         elif args.command == "dtrace":
-            result = api.trace_signal_dest(
-                args.signal, args.file, args.line - 1, args.column
-            )
-            print_signal_trace(result, args.json)
+            if args.recursive == 1:
+                result = api.trace_signal_dest(
+                    args.signal, args.file, args.line - 1, args.column
+                )
+                print_signal_trace(result, args.json)
+            else:
+                max_depth = args.recursive if args.recursive > 0 else 999
+                result = api.trace_signal_dest_recursive(
+                    args.signal, args.file, args.line - 1, args.column, max_depth
+                )
+                print_recursive_trace(result, args.json)
 
         elif args.command == "vcd":
             if not os.path.isfile(args.vcd_file):
