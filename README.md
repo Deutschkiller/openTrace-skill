@@ -1,6 +1,13 @@
-# openTrace-skill
+# vtags - Verilog HDL 代码分析与波形工具集
 
-Verilog HDL 代码导航工具。支持模块拓扑、模块追踪、信号追踪、模块搜索、VCD 波形分析等功能。
+vtags 是一个 Verilog HDL 代码分析与波形工具集，分为两个独立的 OpenCode skill：
+
+| Skill | 描述 |
+|-------|------|
+| `vtags-tracer` | Verilog HDL 代码追踪（模块拓扑、信号源/目的地追踪、模块搜索、依赖导出） |
+| `vcd-analyzer` | VCD 波形分析（信号列表、波形时序、异常检测） |
+
+两个 skill 完全独立，可按需使用。`vcd-analyzer` 的 `--file --line` 参数可配合 `vtags-tracer` 精确推断实例路径。
 
 ## 功能特性
 
@@ -43,7 +50,7 @@ cd openTrace-skill
 1. 提示输入 vtags 安装路径（默认 `~/vtags`）
 2. 复制 vtags 源码到目标路径
 3. 编译 C Parser（需要 gcc）
-4. 安装 OpenCode skill 到 `~/.config/opencode/skills/openTrace-skill/`
+4. 安装 OpenCode skills 到 `~/.config/opencode/skills/vtags-tracer/` 和 `~/.config/opencode/skills/vcd-analyzer/`
 
 ## 系统要求
 
@@ -62,7 +69,7 @@ cd openTrace-skill
 搜索所有包含 mng 的模块
 ```
 
-OpenCode 会自动加载 openTrace-skill 并执行相应命令。
+OpenCode 会自动加载对应的 skill 并执行相应命令。
 
 ## 命令行使用
 
@@ -307,7 +314,7 @@ Sources:
 
 ## VCD 波形分析功能
 
-openTrace-skill 支持 VCD 波形文件分析，结合信号追踪帮助定位问题。
+vcd-analyzer 支持 VCD 波形文件分析，结合信号追踪帮助定位问题。
 
 ### 信号路径格式
 
@@ -464,7 +471,13 @@ openTrace-skill/
 
 ## 版本历史
 
-### v3.14.1 (当前)
+### v3.14.3 (当前)
+- ✅ VCD 解析自动处理格式错误的文件
+
+### v3.14.2
+- ✅ Case 条件追踪修复 `begin_count` 重复计算问题
+
+### v3.14.1
 - ✅ VCD 信号匹配支持完整路径格式
 - ✅ CLI `--signal` 与 Python API 行为一致
 

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.15.0] - 2026-03-31
+
+### Changed
+- Split openTrace-skill into two independent skills:
+  - `vtags-tracer`: Verilog HDL code tracing (module topology, signal source/destination tracing, module search, dependency export)
+  - `vcd-analyzer`: VCD waveform analysis (signal listing, waveform timing, anomaly detection)
+- Each skill can be used independently without depending on the other
+- VCD analyzer's `--file --line` parameter can optionally work with vtags-tracer for precise instance path determination
+
+### Removed
+- Original `openTrace-skill` directory (replaced by two separate skills)
+
+## [3.14.3] - 2025-03-27
+
+### Improved
+- VCD parsing now automatically handles malformed VCD files
+- Skip problematic lines (e.g., vector value changes without identifier)
+- Create temporary cleaned file for parsing
+- User-friendly warnings for malformed VCD content
+
 ## [3.14.2] - 2025-03-26
 
 ### Fixed
