@@ -444,15 +444,18 @@ python3 <vtags_path>/vtags.py -f design.f
 ## 目录结构
 
 ```
-openTrace-skill/
+vtags/
 ├── README.md          # 本文件
 ├── CHANGELOG.md       # 版本变更记录
 ├── CONTRIBUTING.md    # 贡献指南
 ├── Makefile           # 常用命令
 ├── requirements.txt   # Python 依赖
 ├── install.sh         # 安装脚本
-├── skill/
-│   └── SKILL.md       # OpenCode skill 定义
+├── skills/            # OpenCode skills
+│   ├── vtags-tracer/  # 代码追踪 skill
+│   │   └── SKILL.md
+│   └── vcd-analyzer/  # VCD 分析 skill
+│       └── SKILL.md
 ├── docs/              # 文档
 ├── examples/          # 使用示例
 └── vtags/             # vtags 完整源码
@@ -471,7 +474,10 @@ openTrace-skill/
 
 ## 版本历史
 
-### v3.14.3 (当前)
+### v3.15.0 (当前)
+- ✅ Skill 拆分：`vtags-tracer` 和 `vcd-analyzer` 两个独立 skill
+
+### v3.14.3
 - ✅ VCD 解析自动处理格式错误的文件
 
 ### v3.14.2
